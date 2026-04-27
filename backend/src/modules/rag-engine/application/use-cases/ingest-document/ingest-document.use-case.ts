@@ -1,8 +1,8 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { PatientRepository } from '../../../patients/domain/repositories/patient.repository';
-import { IngestDocumentInput } from './ingest-document.input';
 import axios from 'axios';
 import * as FormData from 'form-data';
+import { PatientRepository } from '../../../patients/domain/repositories/patient.repository';
+import { IngestDocumentInput } from './ingest-document.input';
 
 @Injectable()
 export class IngestDocumentUseCase {
