@@ -1,2 +1,27 @@
-*/node_modules
-*/.pnpm-store
+# Dependencies
+**/node_modules
+**/.pnpm-store
+
+# Next.js
+app/.next/
+app/out/
+
+# TypeScript build output
+rag-pipeline/dist/
+
+# Environment variables
+**/.env
+**/.env.local
+**/.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+**/*.log
+**/npm-debug.log*
+**/pnpm-debug.log*
+
+# Docker volumes (local)
+**/chroma-data/
