@@ -1,0 +1,49 @@
+[
+  {
+    "type": "appointment",
+    "date": "2024-02-15",
+    "time": "10:00",
+    "procedure": "Limpeza",
+    "status": "Agendado",
+    "dentist": "Dra. Sarah Johnson"
+  },
+  {
+    "type": "appointment",
+    "date": "2024-01-15",
+    "time": "14:00",
+    "procedure": "Check-up",
+    "status": "Concluído",
+    "dentist": "Dra. Sarah Johnson",
+    "notes": "Limpeza regular e check-up. Nenhum problema encontrado."
+  },
+  {
+    "type": "appointment",
+    "date": "2023-10-20",
+    "time": "09:30",
+    "procedure": "Obturação",
+    "status": "Concluído",
+    "dentist": "Dr. Mike Davis",
+    "notes": "Obturação no molar superior direito. Paciente tolerou bem o procedimento."
+  },
+  {
+    "type": "appointment",
+    "date": "2023-07-10",
+    "time": "11:00",
+    "procedure": "Limpeza de rotina",
+    "status": "Concluído",
+    "dentist": "Dra. Sarah Johnson",
+    "notes": "Limpeza de rotina. Recomendado uso mais regular de fio dental."
+  },
+  {
+    "type": "image",
+    "date": "2024-01-15",
+    "kind": "Radiografia panorâmica",
+    "findings": "Sem cáries ativas. Leve perda óssea horizontal próxima ao dente 36."
+  },
+  {
+    "type": "image",
+    "date": "2023-10-20",
+    "kind": "Foto intra-oral (depois)",
+    "findings": "Restauração classe I em molar superior direito concluída."
+  }
+]

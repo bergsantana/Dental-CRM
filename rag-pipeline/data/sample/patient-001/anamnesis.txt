@@ -1,0 +1,30 @@
+PATIENT ANAMNESIS — Patient ID: 001
+Name: João Silva
+Date of birth: 1985-03-15
+Last visit: 2024-01-15
+Primary dentist: Dra. Sarah Johnson
+
+GENERAL HEALTH
+Allergies: Penicillin (mild rash). No known latex allergy.
+Current medications: Losartan 50mg/day for hypertension.
+Chronic diseases: Hypertension, controlled. No diabetes.
+Smoking: No.
+Alcohol use: Occasional (social, weekends).
+
+ORTHODONTICS
+Jaw pain: No.
+Bite issues: Mild crowding on lower anterior teeth.
+Orthodontic history: Used fixed braces from 2002 to 2004. No retainer in use currently.
+
+IMPLANTOLOGY
+Bone density notes: Adequate on the most recent panoramic X-ray (2024-01-15).
+Prior implants: No.
+X-ray notes: Mild horizontal bone loss around tooth 36.
+
+ENDODONTICS
+Root canal history: Tooth 16 endodontically treated in 2018.
+Pain sensitivity: Mild cold sensitivity on tooth 26.
+Pulp vitality: Tooth 26 responded positively to cold test.
+
+NOTES
+Patient reports occasional bleeding when flossing. Recommended to improve flossing technique. No periodontal pockets >3mm at last evaluation.
