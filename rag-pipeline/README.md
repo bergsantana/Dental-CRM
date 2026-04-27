@@ -54,7 +54,7 @@ cd rag-pipeline
 docker compose up -d
 
 # 2. Watch model pulls (optional)
-docker compose logs -f ollama-bootstrap
+## docker compose logs -f ollama-bootstrap
 
 # 3. Ingest the sample patient
 docker compose run --rm rag-app pnpm ingest \
