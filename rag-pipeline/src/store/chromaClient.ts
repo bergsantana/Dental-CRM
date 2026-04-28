@@ -84,25 +84,3 @@ export async function queryByEmbedding(
   }
   return hits;
 }
-
-export async function deleteByPatient(
-  patientId: string,
-  source?: string,
-): Promise<void> {
-  const collection = await getCollection();
-  const where: Record<string, string> = { patientId };
-  if (source) where.source = source;
-  await collection.delete({ where });
-}
-
-export async function listPatientSources(patientId: string): Promise<string[]> {
-  const collection = await getCollection();
-  const res = await collection.get({ where: { patientId }, include: ["metadatas"] as never });
-  const metas = (res.metadatas ?? []) as Array<Record<string, unknown> | null>;
-  const seen = new Set<string>();
-  for (const m of metas) {
-    const s = m?.source;
-    if (typeof s === "string") seen.add(s);
-  }
-  return Array.from(seen);
-}

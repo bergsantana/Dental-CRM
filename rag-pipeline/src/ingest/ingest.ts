@@ -10,7 +10,6 @@ import { promises as fs } from "node:fs";
 interface IngestArgs {
   dir?: string;
   file?: string;
-  files?: { path: string; mime?: string }[];
   patient: string;
 }
 
@@ -40,19 +39,12 @@ function chunkId(patientId: string, source: string, index: number): string {
 
 export async function ingest(args: IngestArgs): Promise<{ docs: number; chunks: number }> {
   let docs: LoadedDoc[];
-  if (args.files && args.files.length > 0) {
-    docs = [];
-    for (const f of args.files) {
-      docs.push(...(await loadFile(f.path)));
-    }
-  } else if (args.dir) {
+  if (args.dir) {
     const stat = await fs.stat(args.dir);
     if (!stat.isDirectory()) throw new Error(`Not a directory: ${args.dir}`);
     docs = await loadDirectory(args.dir);
-  } else if (args.file) {
-    docs = await loadFile(args.file);
   } else {
-    throw new Error("Provide --dir, --file, or files[]");
+    docs = await loadFile(args.file!);
   }
   if (docs.length === 0) {
     console.log("No supported documents found.");

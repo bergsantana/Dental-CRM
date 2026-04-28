@@ -97,7 +97,11 @@ function AssistantPageInner() {
       .then(setDocs)
       .catch(() => setDocs([]))
     try {
-      const session = await chatApi.createSession(p.id)
+      // Reuse the most recent session for this patient so the conversation
+      // history persists across reloads / patient re-selection. Only create
+      // a new session if none exists yet.
+      const existing = await chatApi.listSessions(p.id).catch(() => [])
+      const session = existing[0] ?? (await chatApi.createSession(p.id))
       setSessionId(session.id)
       const past = await chatApi.listMessages(session.id)
       setMessages(

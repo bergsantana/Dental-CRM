@@ -33,15 +33,14 @@ services:
       # Ollama runs on the host machine. `host.docker.internal` resolves to the
       # host from within the container (works on Docker Desktop and, thanks to
       # extra_hosts below, on Linux too).
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_URL: ${OLLAMA_URL:-http://0.0.0.0:11434}
       CHROMA_URL: http://chroma:8000
       LLM_MODEL: ${LLM_MODEL:-llama3:8b}
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
       PORT: "3000"
       TOP_K: "8"
       RERANK: "false"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+     
     volumes:
       # Sample / user-supplied documents are read-only inside the container.
       - ./data:/app/data:ro

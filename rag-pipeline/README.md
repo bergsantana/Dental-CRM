@@ -53,7 +53,8 @@ cd rag-pipeline
 #    nomic-embed-text (~270 MB) into a named volume — be patient.
 docker compose up -d
 
-#2  Init Ollama
+# 2. Watch model pulls (optional)
+docker compose logs -f ollama-bootstrap
 
 # 3. Ingest the sample patient
 docker compose run --rm rag-app pnpm ingest \

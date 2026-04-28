@@ -159,8 +159,16 @@ export class ChatController {
               assistantText += parsed.data;
             }
           } else if (!parsed.event) {
-            // default "data:" line — treat as token text
-            assistantText += parsed.data;
+            // Default `data:` line — the upstream sends JSON-stringified
+            // tokens (e.g. `data: "Yes"`). Try to parse so we store the
+            // raw token text without the surrounding quotes; fall back to
+            // the raw data if it isn't valid JSON.
+            try {
+              const value = JSON.parse(parsed.data);
+              assistantText += typeof value === 'string' ? value : parsed.data;
+            } catch {
+              assistantText += parsed.data;
+            }
           }
         }
       }
