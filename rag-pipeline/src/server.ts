@@ -8,6 +8,7 @@ import { chatStream } from "./generate/ollamaChat.js";
 import { SYSTEM_PROMPT, buildUserMessage } from "./generate/prompt.js";
 import { ingest } from "./ingest/ingest.js";
 import { deleteByPatient, listPatientSources } from "./store/chromaClient.js";
+import { evaluateTriad } from "./metrics/evaluate.js";
 
 const app = Fastify({ logger: true });
 
@@ -103,9 +104,31 @@ async function chatHandler(req: FastifyRequest, reply: FastifyReply) {
   ];
 
   try {
+    let assistantText = "";
     for await (const piece of chatStream(messages)) {
+      assistantText += piece;
       reply.raw.write(`data: ${JSON.stringify(piece)}\n\n`);
     }
+
+    if (config.metricsEnabled && assistantText.trim().length > 0) {
+      try {
+        const metrics = await evaluateTriad({ question, answer: assistantText, hits });
+        reply.raw.write(`event: metrics\ndata: ${JSON.stringify(metrics)}\n\n`);
+      } catch (metricErr) {
+        // Metrics must never break the chat response.
+        app.log.warn({ err: metricErr }, "metrics evaluation failed");
+        reply.raw.write(
+          `event: metrics\ndata: ${JSON.stringify({
+            contextRelevance: null,
+            groundedness: null,
+            answerRelevance: null,
+            perChunk: [],
+            error: String(metricErr),
+          })}\n\n`,
+        );
+      }
+    }
+
     reply.raw.write("event: done\ndata: {}\n\n");
   } catch (err) {
     reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: String(err) })}\n\n`);

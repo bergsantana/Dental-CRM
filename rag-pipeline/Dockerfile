@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
+# `onnxruntime-node` (loaded by @xenova/transformers for the BGE reranker)
+# ships precompiled glibc binaries, so we use the Debian-slim image instead
+# of Alpine — musl can't load the bundled .so files.
+
 # ---------- builder ----------
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
@@ -17,7 +21,7 @@ COPY src ./src
 RUN pnpm build && pnpm prune --prod
 
 # ---------- runtime ----------
-FROM node:20-alpine AS runtime
+FROM node:20-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0

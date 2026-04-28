@@ -1,7 +1,7 @@
 services:
   api:
     # Dev override: hot reload via `nest start --watch`.
-    command: ["sh", "-c", "pnpm install --prefer-offline --no-frozen-lockfile && pnpm start:dev"]
+    command: ["sh", "-c", "pnpm install --prefer-offline --no-frozen-lockfile && pnpm db:migrate && pnpm start:dev"]
     volumes:
       - ./api:/app
       # Anonymous volume preserves image-baked node_modules so the bind-mount

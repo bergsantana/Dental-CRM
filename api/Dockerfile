@@ -12,4 +12,6 @@ COPY . .
 RUN pnpm build
 
 EXPOSE 4000
-CMD ["node", "dist/main.js"]
+# Apply pending Drizzle migrations before starting the server. `db:migrate`
+# is idempotent — already-applied migrations are no-ops.
+CMD ["sh", "-c", "pnpm db:migrate && node dist/main.js"]

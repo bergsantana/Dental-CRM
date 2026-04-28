@@ -61,6 +61,12 @@ export class ChatService {
     role: 'user' | 'assistant',
     content: string,
     sources?: unknown,
+    metrics?: {
+      contextRelevance?: number | null;
+      groundedness?: number | null;
+      answerRelevance?: number | null;
+      perChunk?: number[] | null;
+    },
   ) {
     const [row] = await this.db
       .insert(chatMessages)
@@ -69,6 +75,10 @@ export class ChatService {
         role,
         content,
         sources: sources as never,
+        contextRelevance: metrics?.contextRelevance ?? null,
+        groundedness: metrics?.groundedness ?? null,
+        answerRelevance: metrics?.answerRelevance ?? null,
+        metricsPerChunk: (metrics?.perChunk ?? null) as never,
       })
       .returning();
     return row;

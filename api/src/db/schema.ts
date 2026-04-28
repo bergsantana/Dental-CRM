@@ -8,6 +8,7 @@ import {
   date,
   jsonb,
   bigint,
+  real,
   index,
   uniqueIndex,
   pgEnum,
@@ -266,6 +267,10 @@ export const chatMessages = pgTable(
     sources: jsonb('sources'),
     tokensIn: integer('tokens_in'),
     tokensOut: integer('tokens_out'),
+    contextRelevance: real('context_relevance'),
+    groundedness: real('groundedness'),
+    answerRelevance: real('answer_relevance'),
+    metricsPerChunk: jsonb('metrics_per_chunk'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

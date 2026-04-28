@@ -18,15 +18,28 @@ import {
   type ChatMessage,
   type PatientDocument,
   type PatientSummary,
+  type RagMetrics,
   type SourceRef,
 } from "@/lib/api-client"
 import { AuthGate } from "@/lib/auth-gate"
+import { formatScorePct, scoreColorClass } from "@/lib/utils"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface UiMessage {
   id: string
   role: "user" | "assistant"
   content: string
   sources?: SourceRef[]
+  metrics?: {
+    contextRelevance: number | null
+    groundedness: number | null
+    answerRelevance: number | null
+  }
 }
 
 export default function AssistantPage() {
@@ -88,12 +101,30 @@ function AssistantPageInner() {
       setSessionId(session.id)
       const past = await chatApi.listMessages(session.id)
       setMessages(
-        past.map((m: ChatMessage) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          sources: (m.sources as SourceRef[] | undefined) ?? undefined,
-        })),
+        past.map((m: ChatMessage) => {
+          const sources = (m.sources as SourceRef[] | undefined) ?? undefined
+          const perChunk = (m.metricsPerChunk as number[] | null | undefined) ?? null
+          const sourcesWithRelevance =
+            sources && perChunk
+              ? sources.map((s, i) => ({ ...s, relevance: perChunk[i] ?? s.relevance }))
+              : sources
+          return {
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            sources: sourcesWithRelevance,
+            metrics:
+              m.contextRelevance != null ||
+              m.groundedness != null ||
+              m.answerRelevance != null
+                ? {
+                    contextRelevance: m.contextRelevance ?? null,
+                    groundedness: m.groundedness ?? null,
+                    answerRelevance: m.answerRelevance ?? null,
+                  }
+                : undefined,
+          }
+        }),
       )
     } catch (e) {
       setError((e as Error).message)
@@ -121,6 +152,29 @@ function AssistantPageInner() {
           m.map((msg) =>
             msg.id === assistantId ? { ...msg, content: msg.content + token } : msg,
           ),
+        )
+      },
+      onMetrics(metrics: RagMetrics) {
+        setMessages((m) =>
+          m.map((msg) => {
+            if (msg.id !== assistantId) return msg
+            const sources =
+              msg.sources && metrics.perChunk?.length
+                ? msg.sources.map((s, i) => ({
+                    ...s,
+                    relevance: metrics.perChunk[i] ?? s.relevance,
+                  }))
+                : msg.sources
+            return {
+              ...msg,
+              sources,
+              metrics: {
+                contextRelevance: metrics.contextRelevance,
+                groundedness: metrics.groundedness,
+                answerRelevance: metrics.answerRelevance,
+              },
+            }
+          }),
         )
       },
       onDone() {
@@ -243,6 +297,55 @@ function AssistantPageInner() {
                       }`}
                     >
                       <div className="whitespace-pre-wrap text-sm">{m.content || (streaming ? "..." : "")}</div>
+                      {m.role === "assistant" && m.metrics ? (
+                        <TooltipProvider>
+                          <div className="mt-2 flex flex-wrap items-center gap-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge
+                                  className={`${scoreColorClass(
+                                    m.metrics.contextRelevance,
+                                  )} text-[10px] gap-1 cursor-help`}
+                                >
+                                  Contexto {formatScorePct(m.metrics.contextRelevance)}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Quão relevantes são os trechos recuperados para a pergunta.
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge
+                                  className={`${scoreColorClass(
+                                    m.metrics.groundedness,
+                                  )} text-[10px] gap-1 cursor-help`}
+                                >
+                                  Fidedignidade {formatScorePct(m.metrics.groundedness)}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Quão bem a resposta se sustenta nos trechos recuperados (sem
+                                alucinação).
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge
+                                  className={`${scoreColorClass(
+                                    m.metrics.answerRelevance,
+                                  )} text-[10px] gap-1 cursor-help`}
+                                >
+                                  Resposta {formatScorePct(m.metrics.answerRelevance)}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Quão diretamente a resposta endereça a pergunta feita.
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        </TooltipProvider>
+                      ) : null}
                       {m.role === "assistant" && m.sources && m.sources.length > 0 ? (
                         <details className="mt-2 text-xs opacity-80">
                           <summary className="cursor-pointer">Fontes ({m.sources.length})</summary>
@@ -251,6 +354,9 @@ function AssistantPageInner() {
                               <li key={i}>
                                 {s.source}
                                 {typeof s.index === "number" ? ` #${s.index}` : ""}
+                                {typeof s.relevance === "number"
+                                  ? ` · ${formatScorePct(s.relevance)}`
+                                  : ""}
                               </li>
                             ))}
                           </ul>

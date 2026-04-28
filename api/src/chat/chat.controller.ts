@@ -110,6 +110,12 @@ export class ChatController {
     let buffer = '';
     let assistantText = '';
     let sources: unknown = null;
+    let metrics: {
+      contextRelevance?: number | null;
+      groundedness?: number | null;
+      answerRelevance?: number | null;
+      perChunk?: number[] | null;
+    } | null = null;
 
     const onClientClose = () => {
       try {
@@ -139,6 +145,12 @@ export class ChatController {
             } catch {
               /* ignore */
             }
+          } else if (parsed.event === 'metrics') {
+            try {
+              metrics = JSON.parse(parsed.data);
+            } catch {
+              /* ignore */
+            }
           } else if (parsed.event === 'token' || parsed.event === 'message') {
             try {
               const obj = JSON.parse(parsed.data) as { token?: string; content?: string };
@@ -160,7 +172,13 @@ export class ChatController {
       req.raw.off('close', onClientClose);
       reply.raw.end();
       if (assistantText.trim().length > 0) {
-        await this.chat.appendMessage(session.id, 'assistant', assistantText, sources);
+        await this.chat.appendMessage(
+          session.id,
+          'assistant',
+          assistantText,
+          sources,
+          metrics ?? undefined,
+        );
         await this.chat.touchSession(session.id);
       }
     }

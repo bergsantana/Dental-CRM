@@ -11,6 +11,7 @@ export const config = {
   collection: "patients",
   authToken: process.env.RAG_AUTH_TOKEN ?? "",
   allowedOrigin: process.env.ALLOWED_ORIGIN ?? "*",
+  metricsEnabled: (process.env.METRICS_ENABLED ?? "true").toLowerCase() === "true",
 };
 
 export type Config = typeof config;

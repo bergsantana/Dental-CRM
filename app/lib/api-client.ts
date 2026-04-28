@@ -529,6 +529,10 @@ export interface ChatMessage {
   role: "user" | "assistant"
   content: string
   sources?: unknown
+  contextRelevance?: number | null
+  groundedness?: number | null
+  answerRelevance?: number | null
+  metricsPerChunk?: number[] | null
   createdAt: string
 }
 
@@ -555,11 +559,20 @@ export interface SourceRef {
   source: string
   index?: number
   distance?: number
+  relevance?: number
+}
+
+export interface RagMetrics {
+  contextRelevance: number | null
+  groundedness: number | null
+  answerRelevance: number | null
+  perChunk: number[]
 }
 
 export interface StreamHandlers {
   onSources?: (sources: SourceRef[]) => void
   onToken?: (token: string) => void
+  onMetrics?: (metrics: RagMetrics) => void
   onDone?: () => void
   onError?: (message: string) => void
 }
@@ -632,6 +645,14 @@ function handleEvent(raw: string, handlers: StreamHandlers) {
   if (event === "sources") {
     try {
       handlers.onSources?.(JSON.parse(data) as SourceRef[])
+    } catch {
+      /* ignore */
+    }
+    return
+  }
+  if (event === "metrics") {
+    try {
+      handlers.onMetrics?.(JSON.parse(data) as RagMetrics)
     } catch {
       /* ignore */
     }
