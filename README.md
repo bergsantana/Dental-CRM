@@ -108,7 +108,8 @@ docker compose up -d postgres chroma adminer
 ```bash
 cd api
 pnpm install
-pnpm drizzle:migrate
+pnpm db:generate
+pnpm db:migrate
 cd ..
 ```
 
