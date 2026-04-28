@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useEffect, useMemo, useState } from "react"
-import { AppSidebar } from "@/components/app-sidebar"
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AppSidebar } from "@/components/app-sidebar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -19,10 +19,19 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { useToast } from "@/hooks/use-toast"
-import { Calendar, Clock, Plus, User, Loader2 } from "lucide-react"
-import { AuthGate } from "@/lib/auth-gate"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 import {
   appointmentsApi,
   clinicsApi,
@@ -30,31 +39,34 @@ import {
   type AppointmentRecord,
   type DentistSummary,
   type PatientSummary,
-} from "@/lib/api-client"
-import { errorMessage } from "@/lib/errors"
+} from "@/lib/api-client";
+import { AuthGate } from "@/lib/auth-gate";
+import { errorMessage } from "@/lib/errors";
+import { Calendar, Clock, Loader2, Plus, User } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 function statusVariant(s: string) {
   switch (s) {
     case "confirmed":
     case "completed":
-      return "default" as const
+      return "default" as const;
     case "cancelled":
     case "no_show":
-      return "destructive" as const
+      return "destructive" as const;
     default:
-      return "secondary" as const
+      return "secondary" as const;
   }
 }
 
 function AgendamentosPageInner() {
-  const { toast } = useToast()
-  const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
-  const [patients, setPatients] = useState<PatientSummary[]>([])
-  const [dentists, setDentists] = useState<DentistSummary[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [filterDentist, setFilterDentist] = useState<string>("all")
+  const { toast } = useToast();
+  const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
+  const [patients, setPatients] = useState<PatientSummary[]>([]);
+  const [dentists, setDentists] = useState<DentistSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [filterDentist, setFilterDentist] = useState<string>("all");
   const [form, setForm] = useState({
     patientId: "",
     dentistId: "",
@@ -63,56 +75,57 @@ function AgendamentosPageInner() {
     durationMinutes: 60,
     reason: "",
     notes: "",
-  })
+  });
 
   const patientById = useMemo(() => {
-    const m = new Map<string, PatientSummary>()
-    patients.forEach((p) => m.set(p.id, p))
-    return m
-  }, [patients])
+    const m = new Map<string, PatientSummary>();
+    patients.forEach((p) => m.set(p.id, p));
+    return m;
+  }, [patients]);
 
   const dentistById = useMemo(() => {
-    const m = new Map<string, DentistSummary>()
-    dentists.forEach((d) => m.set(d.id, d))
-    return m
-  }, [dentists])
+    const m = new Map<string, DentistSummary>();
+    dentists.forEach((d) => m.set(d.userId, d));
+    return m;
+  }, [dentists]);
 
   async function refresh() {
     try {
-      const params = filterDentist !== "all" ? { dentistId: filterDentist } : undefined
+      const params =
+        filterDentist !== "all" ? { dentistId: filterDentist } : undefined;
       const [list, ps, ds] = await Promise.all([
         appointmentsApi.list(params),
         patientsApi.list().catch(() => [] as PatientSummary[]),
         clinicsApi.listDentists().catch(() => [] as DentistSummary[]),
-      ])
-      setAppointments(list)
-      setPatients(ps)
-      setDentists(ds)
+      ]);
+      setAppointments(list);
+      setPatients(ps);
+      setDentists(ds);
     } catch (err) {
       toast({
         title: "Falha ao carregar agendamentos",
         description: errorMessage(err),
         variant: "destructive",
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    refresh()
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterDentist])
+  }, [filterDentist]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.date || !form.time) return
-    setSubmitting(true)
+    e.preventDefault();
+    if (!form.date || !form.time) return;
+    setSubmitting(true);
     try {
-      const startsAt = new Date(`${form.date}T${form.time}:00`).toISOString()
+      const startsAt = new Date(`${form.date}T${form.time}:00`).toISOString();
       const endsAt = new Date(
         new Date(startsAt).getTime() + form.durationMinutes * 60_000,
-      ).toISOString()
+      ).toISOString();
       const created = await appointmentsApi.create({
         patientId: form.patientId,
         dentistId: form.dentistId,
@@ -120,9 +133,9 @@ function AgendamentosPageInner() {
         endsAt,
         reason: form.reason || undefined,
         notes: form.notes || undefined,
-      })
-      setAppointments((prev) => [...prev, created])
-      setIsDialogOpen(false)
+      });
+      setAppointments((prev) => [...prev, created]);
+      setIsDialogOpen(false);
       setForm({
         patientId: "",
         dentistId: "",
@@ -131,18 +144,18 @@ function AgendamentosPageInner() {
         durationMinutes: 60,
         reason: "",
         notes: "",
-      })
-      toast({ title: "Agendamento criado" })
+      });
+      toast({ title: "Agendamento criado" });
     } catch (err) {
       toast({
         title: "Falha ao criar",
         description: errorMessage(err),
         variant: "destructive",
-      })
+      });
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
-  }
+  };
 
   return (
     <SidebarProvider>
@@ -152,7 +165,9 @@ function AgendamentosPageInner() {
           <div className="border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 z-10">
             <div className="flex items-center gap-4 px-6 py-4">
               <SidebarTrigger />
-              <h1 className="text-2xl font-bold text-foreground">Agendamentos</h1>
+              <h1 className="text-2xl font-bold text-foreground">
+                Agendamentos
+              </h1>
             </div>
           </div>
 
@@ -165,7 +180,7 @@ function AgendamentosPageInner() {
                 <SelectContent>
                   <SelectItem value="all">Todos os dentistas</SelectItem>
                   {dentists.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
+                    <SelectItem key={d.userId} value={d.userId}>
                       {d.fullName}
                     </SelectItem>
                   ))}
@@ -191,7 +206,9 @@ function AgendamentosPageInner() {
                       <Label>Paciente</Label>
                       <Select
                         value={form.patientId}
-                        onValueChange={(v) => setForm({ ...form, patientId: v })}
+                        onValueChange={(v) =>
+                          setForm({ ...form, patientId: v })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione" />
@@ -209,14 +226,16 @@ function AgendamentosPageInner() {
                       <Label>Dentista</Label>
                       <Select
                         value={form.dentistId}
-                        onValueChange={(v) => setForm({ ...form, dentistId: v })}
+                        onValueChange={(v) =>
+                          setForm({ ...form, dentistId: v })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
                         <SelectContent>
                           {dentists.map((d) => (
-                            <SelectItem key={d.id} value={d.id}>
+                            <SelectItem key={d.userId} value={d.userId}>
                               {d.fullName}
                             </SelectItem>
                           ))}
@@ -229,7 +248,9 @@ function AgendamentosPageInner() {
                         <Input
                           type="date"
                           value={form.date}
-                          onChange={(e) => setForm({ ...form, date: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, date: e.target.value })
+                          }
                           required
                         />
                       </div>
@@ -238,7 +259,9 @@ function AgendamentosPageInner() {
                         <Input
                           type="time"
                           value={form.time}
-                          onChange={(e) => setForm({ ...form, time: e.target.value })}
+                          onChange={(e) =>
+                            setForm({ ...form, time: e.target.value })
+                          }
                           required
                         />
                       </div>
@@ -250,7 +273,10 @@ function AgendamentosPageInner() {
                           step={15}
                           value={form.durationMinutes}
                           onChange={(e) =>
-                            setForm({ ...form, durationMinutes: Number(e.target.value) })
+                            setForm({
+                              ...form,
+                              durationMinutes: Number(e.target.value),
+                            })
                           }
                         />
                       </div>
@@ -259,14 +285,18 @@ function AgendamentosPageInner() {
                       <Label>Motivo</Label>
                       <Input
                         value={form.reason}
-                        onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, reason: e.target.value })
+                        }
                       />
                     </div>
                     <div className="space-y-2">
                       <Label>Observações</Label>
                       <Textarea
                         value={form.notes}
-                        onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, notes: e.target.value })
+                        }
                         rows={3}
                       />
                     </div>
@@ -280,7 +310,9 @@ function AgendamentosPageInner() {
                       </Button>
                       <Button
                         type="submit"
-                        disabled={submitting || !form.patientId || !form.dentistId}
+                        disabled={
+                          submitting || !form.patientId || !form.dentistId
+                        }
                       >
                         {submitting ? (
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -311,12 +343,13 @@ function AgendamentosPageInner() {
                   .slice()
                   .sort(
                     (a, b) =>
-                      new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+                      new Date(a.startsAt).getTime() -
+                      new Date(b.startsAt).getTime(),
                   )
                   .map((appt) => {
-                    const startsAt = new Date(appt.startsAt)
-                    const patient = patientById.get(appt.patientId)
-                    const dentist = dentistById.get(appt.dentistId)
+                    const startsAt = new Date(appt.startsAt);
+                    const patient = patientById.get(appt.patientId);
+                    const dentist = dentistById.get(appt.dentistId);
                     return (
                       <Card key={appt.id}>
                         <CardHeader>
@@ -330,7 +363,9 @@ function AgendamentosPageInner() {
                                 minute: "2-digit",
                               })}
                             </CardTitle>
-                            <Badge variant={statusVariant(appt.status)}>{appt.status}</Badge>
+                            <Badge variant={statusVariant(appt.status)}>
+                              {appt.status}
+                            </Badge>
                           </div>
                           <CardDescription className="flex items-center gap-2 flex-wrap">
                             <User className="w-3 h-3" />
@@ -346,7 +381,7 @@ function AgendamentosPageInner() {
                           </CardDescription>
                         </CardHeader>
                       </Card>
-                    )
+                    );
                   })}
               </div>
             )}
@@ -354,7 +389,7 @@ function AgendamentosPageInner() {
         </main>
       </div>
     </SidebarProvider>
-  )
+  );
 }
 
 export default function AgendamentosPage() {
@@ -362,5 +397,5 @@ export default function AgendamentosPage() {
     <AuthGate>
       <AgendamentosPageInner />
     </AuthGate>
-  )
+  );
 }
