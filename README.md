@@ -55,82 +55,37 @@ enforced server-side via a Chroma metadata filter on `patientId`.
 
 ## Running the project
 
-Everything is wired through `docker-compose`. The override file enables hot
-reload for `api` and `rag` so editing files on the host is enough.
+The whole stack (Postgres, Chroma, Adminer, API, RAG) runs via
+`docker-compose`. Hot reload is enabled for `api` and `rag` so editing files
+on the host is enough.
 
 ### Prerequisites
 
 - Docker + Docker Compose.
-- [Ollama](https://ollama.com/) running on the host (`ollama serve`). The
-  containerised `ollama` service is commented out by default — running it on
-  the host is faster and avoids re-downloading models. Pull the models once:
+- [Ollama](https://ollama.com/) installed on the host. The bootstrap script
+  ensures it listens on `0.0.0.0:11434` so the `rag` container can reach it
+  through `host.docker.internal`.
 
-  ```bash
-  ollama pull llama3:8b
-  ollama pull nomic-embed-text
-  ```
-
-  The `rag` container reaches the host through `host.docker.internal` (set up
-  in [docker-compose.override.yml](docker-compose.override.yml)).
-
-### 1. Configure environment
-
-Copy the example env files (defaults work for local dev):
+### One-shot bootstrap
 
 ```bash
-cp api/.env.example api/.env
-cp rag-pipeline/.env.example rag-pipeline/.env
+./scripts/start.sh
 ```
 
-Optionally create `.env` at the repo root to override compose defaults:
+The script is idempotent and:
 
-```env
-POSTGRES_USER=dental
-POSTGRES_PASSWORD=dental
-POSTGRES_DB=dental_crm
-JWT_SECRET=dev-secret-change-me
-RAG_AUTH_TOKEN=changeme
-APP_ORIGIN=http://localhost:3567
-```
+1. Verifies tooling (`docker`, `ollama`, `curl`).
+2. Restarts Ollama on `0.0.0.0:11434` if it's bound to loopback.
+3. Pulls `llama3:8b` and `nomic-embed-text` if missing.
+4. Seeds `api/.env` and `rag-pipeline/.env` from `*.env.example` on first run.
+5. Builds images and starts the stack.
+6. Waits for Postgres / API / RAG health and prints all URLs.
 
-### 2. Start the backing services
+Database migrations run automatically on api container start.
 
-```bash
-docker compose up -d postgres chroma adminer
-```
+### Start the frontend
 
-- Postgres → `localhost:5432`
-- Chroma → `localhost:8000`
-- Adminer (DB UI) → `http://localhost:8080`
-
-### 3. Run database migrations
-
-```bash
-cd api
-pnpm install
-pnpm db:generate
-pnpm db:migrate
-cd ..
-```
-
-### 4. Start the API and RAG service
-
-```bash
-docker compose up api rag
-```
-
-Both run with hot reload. Logs:
-
-```bash
-docker compose logs -f api rag
-```
-
-The API listens on `http://localhost:4000` and the RAG service on
-`http://localhost:3000`.
-
-### 5. Start the frontend
-
-The frontend runs on the host (not in compose):
+The Next.js app runs on the host (not in compose):
 
 ```bash
 cd app
@@ -138,11 +93,10 @@ pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3567](http://localhost:3567) (or whatever port Next.js
-picks). Sign up to create your first clinic, then start adding patients,
-documents and anamneses — uploads and anamneses are auto-ingested into the
-patient's RAG index, so the **Assistente** page can immediately answer
-questions about that patient.
+Open [http://localhost:3567](http://localhost:3567). Sign up to create your
+first clinic, then add patients, documents and anamneses — uploads and
+anamneses are auto-ingested into the patient's RAG index, so the
+**Assistente** page can immediately answer questions about that patient.
 
 ### Optional: ingest the bundled sample patient
 
@@ -154,23 +108,24 @@ docker compose run --rm rag pnpm ingest --dir data/sample/patient-001 --patient 
 
 | Command | Purpose |
 |---|---|
-| `docker compose up -d postgres chroma` | Start only the storage layer. |
+| `./scripts/start.sh` | Bootstrap or refresh the stack. |
 | `docker compose logs -f api rag` | Tail API and RAG logs. |
-| `docker compose down -v` | Stop everything and **drop volumes** (resets DB and Chroma). |
-| `cd api && pnpm drizzle:generate` | Generate a new Drizzle migration. |
-| `cd api && pnpm drizzle:migrate` | Apply pending migrations. |
-| `cd app && pnpm dev` | Run the Next.js dev server. |
+| `docker compose down` | Stop the stack. |
+| `docker compose down -v` | Stop and **drop volumes** (resets DB and Chroma). |
+| `docker exec dental-crm-api-1 pnpm db:migrate` | Manually apply pending migrations. |
+| `cd api && pnpm db:generate` | Generate a new Drizzle migration from schema changes. |
 
 ### Troubleshooting
 
-- **`rag` container can't reach Ollama** — confirm `ollama serve` is up on the
-  host and that `OLLAMA_URL=http://host.docker.internal:11434` (set by the
-  override file).
+- **`rag` container can't reach Ollama (`ECONNREFUSED 172.17.0.1:11434`)** —
+  Ollama is bound to loopback. Re-run `./scripts/start.sh` (it auto-fixes) or
+  start Ollama manually with `OLLAMA_HOST=0.0.0.0:11434 ollama serve`.
 - **`401 unauthorized` from the RAG service** — `RAG_AUTH_TOKEN` must match in
   both `api/.env` and `rag-pipeline/.env` (or use the compose default).
-- **Port collisions** — the frontend defaults try `3567`/`3000`; the RAG
-  service holds `3000` in compose. Stop one or change `PORT` in
-  `app/.env.local`.
+- **`column "..." does not exist`** — pending migration. Run
+  `docker exec dental-crm-api-1 pnpm db:migrate`.
+- **Port collisions** — the frontend defaults to `3567`; the RAG service holds
+  `3000`. Stop the conflicting process or change `PORT` in `app/.env.local`.
 
 ## Features
 
