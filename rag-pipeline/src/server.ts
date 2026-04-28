@@ -21,6 +21,14 @@ const IngestBody = z.object({
   patientId: z.string().min(1),
   dir: z.string().optional(),
   file: z.string().optional(),
+  files: z
+    .array(
+      z.object({
+        path: z.string().min(1),
+        mime: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 app.get("/v1/health", async () => ({
@@ -35,11 +43,36 @@ app.post("/v1/ingest", async (req, reply) => {
   if (!parsed.success) {
     return reply.code(400).send({ error: parsed.error.flatten() });
   }
-  const result = await ingest({
-    patient: parsed.data.patientId,
-    dir: parsed.data.dir,
-    file: parsed.data.file,
-  });
+
+  const payload = parsed.data;
+  let result: { docs: number; chunks: number };
+
+  if (payload.dir) {
+    result = await ingest({
+      patient: payload.patientId,
+      dir: payload.dir,
+    });
+  } else {
+    const filePaths = payload.files?.map((f) => f.path) ?? (payload.file ? [payload.file] : []);
+    if (filePaths.length === 0) {
+      return reply.code(400).send({
+        error: "Provide dir, file, or files[].path",
+      });
+    }
+
+    let docs = 0;
+    let chunks = 0;
+    for (const filePath of filePaths) {
+      const partial = await ingest({
+        patient: payload.patientId,
+        file: filePath,
+      });
+      docs += partial.docs;
+      chunks += partial.chunks;
+    }
+    result = { docs, chunks };
+  }
+
   return result;
 });
 

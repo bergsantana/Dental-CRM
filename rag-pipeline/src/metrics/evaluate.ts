@@ -1,5 +1,4 @@
 import { embed } from "../embed/ollamaEmbeddings.js";
-import { scorePairs } from "../retrieve/reranker.js";
 import type { QueryHit } from "../store/chromaClient.js";
 import { clamp01, cosine, splitSentences } from "./math.js";
 
@@ -28,18 +27,16 @@ export async function evaluateTriad(args: {
   const { question, answer, hits } = args;
   const docs = hits.map((h) => h.document);
 
-  // Run independent stages in parallel: cross-encoder scoring + embeddings.
-  const perChunkPromise = scorePairs(question, docs).then((s) => s.map(clamp01));
-
   // We need embeddings for: question, answer, every chunk — a single batch.
   const sentences = splitSentences(answer);
   const embedTargets: string[] = [question, answer, ...docs];
-  const embedPromise = embed(embedTargets);
-
-  const [perChunk, embeddings] = await Promise.all([perChunkPromise, embedPromise]);
+  const embeddings = await embed(embedTargets);
   const qEmb = embeddings[0]!;
   const aEmb = embeddings[1]!;
   const chunkEmbs = embeddings.slice(2);
+
+  // Context relevance: similarity(question, each selected chunk) in [0,1].
+  const perChunk = chunkEmbs.map((cEmb) => clamp01(cosine(qEmb, cEmb)));
 
   const contextRelevance =
     perChunk.length > 0 ? perChunk.reduce((s, x) => s + x, 0) / perChunk.length : 0;
