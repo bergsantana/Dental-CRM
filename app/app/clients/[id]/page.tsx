@@ -1,8 +1,6 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
@@ -10,112 +8,181 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, Mail, Phone, Calendar, Plus, Upload, ExternalLink } from "lucide-react"
-import Link from "next/link"
+import {
+  ArrowLeft,
+  Mail,
+  Phone,
+  CalendarIcon,
+  FileText,
+  Plus,
+  Upload,
+  Loader2,
+  Trash2,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Eye,
+  Pencil,
+} from "lucide-react"
+import { AuthGate } from "@/lib/auth-gate"
+import {
+  patientsApi,
+  documentsApi,
+  type PatientSummary,
+  type TimelineEntry,
+  type PatientDocument,
+  type IngestStatus,
+} from "@/lib/api-client"
+import { errorMessage } from "@/lib/errors"
 
-const mockClient = {
-  id: 1,
-  name: "João Silva",
-  email: "joao.silva@email.com",
-  phone: "(11) 98765-4321",
-  birthdate: "1985-03-15",
-  lastVisit: "2024-01-15",
-  dentist: "Dra. Sarah Johnson",
-  specialty: "Gastroenterologia",
-  tags: ["Regular", "Convênio"],
+function StatusBadge({ status }: { status: IngestStatus }) {
+  if (status === "ready") {
+    return (
+      <Badge className="bg-green-600 hover:bg-green-600">
+        <CheckCircle2 className="w-3 h-3 mr-1" />
+        Pronto
+      </Badge>
+    )
+  }
+  if (status === "failed") {
+    return (
+      <Badge variant="destructive">
+        <AlertTriangle className="w-3 h-3 mr-1" />
+        Falhou
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="secondary">
+      <Clock className="w-3 h-3 mr-1" />
+      {status === "processing" ? "Processando" : "Pendente"}
+    </Badge>
+  )
 }
 
-const mockHistory = [
-  {
-    id: 1,
-    date: "2024-01-15",
-    notes: "Limpeza regular e check-up. Nenhum problema encontrado.",
-    dentist: "Dra. Sarah Johnson",
-    images: 2,
-  },
-  {
-    id: 2,
-    date: "2023-10-20",
-    notes: "Obturação no molar superior direito. Paciente tolerou bem o procedimento.",
-    dentist: "Dr. Mike Davis",
-    images: 3,
-  },
-  {
-    id: 3,
-    date: "2023-07-10",
-    notes: "Limpeza de rotina. Recomendado uso mais regular de fio dental.",
-    dentist: "Dra. Sarah Johnson",
-    images: 1,
-  },
-]
-
-const mockImages = [
-  { id: 1, url: "/dental-xray.png", date: "2024-01-15", type: "Radiografia" },
-  { id: 2, url: "/teeth-before.jpg", date: "2024-01-15", type: "Antes" },
-  { id: 3, url: "/teeth-after.jpg", date: "2023-10-20", type: "Depois" },
-  { id: 4, url: "/dental-scan.png", date: "2023-10-20", type: "Varredura" },
-]
-
-const mockAppointments = [
-  { id: 1, date: "2024-02-15", time: "10:00", type: "Limpeza", status: "Agendado" },
-  { id: 2, date: "2024-01-15", time: "14:00", type: "Check-up", status: "Concluído" },
-  { id: 3, date: "2023-10-20", time: "09:30", type: "Obturação", status: "Concluído" },
-]
-
-export default function ClientDetailPage() {
-  const params = useParams()
+function ClientDetailInner() {
+  const params = useParams<{ id: string }>()
   const router = useRouter()
   const { toast } = useToast()
-  const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false)
-  const [isAppointmentDialogOpen, setIsAppointmentDialogOpen] = useState(false)
-  const [newRecord, setNewRecord] = useState({
-    date: new Date().toISOString().split("T")[0],
-    notes: "",
-  })
-  const [newAppointment, setNewAppointment] = useState({
-    date: "",
-    time: "",
-    type: "",
-  })
+  const id = params.id
 
-  const handleAddRecord = (e: React.FormEvent) => {
-    e.preventDefault()
-    toast({
-      title: "Registro adicionado",
-      description: "Registro de tratamento salvo com sucesso",
-    })
-    setIsRecordDialogOpen(false)
-    setNewRecord({ date: new Date().toISOString().split("T")[0], notes: "" })
+  const [patient, setPatient] = useState<PatientSummary | null>(null)
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([])
+  const [documents, setDocuments] = useState<PatientDocument[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function loadAll() {
+    try {
+      const [p, tl, docs] = await Promise.all([
+        patientsApi.get(id),
+        patientsApi.timeline(id).catch(() => [] as TimelineEntry[]),
+        documentsApi.list(id).catch(() => [] as PatientDocument[]),
+      ])
+      setPatient(p)
+      setTimeline(tl)
+      setDocuments(docs)
+    } catch (err) {
+      toast({
+        title: "Falha ao carregar paciente",
+        description: errorMessage(err),
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleAddAppointment = (e: React.FormEvent) => {
-    e.preventDefault()
-    toast({
-      title: "Consulta agendada",
-      description: "A consulta foi adicionada ao calendário",
-    })
-    setIsAppointmentDialogOpen(false)
-    setNewAppointment({ date: "", time: "", type: "" })
+  useEffect(() => {
+    loadAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  // Poll documents while any is pending/processing
+  useEffect(() => {
+    const hasPending = documents.some(
+      (d) => d.ingestStatus === "pending" || d.ingestStatus === "processing",
+    )
+    if (!hasPending) return
+    const t = setInterval(() => {
+      documentsApi
+        .list(id)
+        .then(setDocuments)
+        .catch(() => {})
+    }, 3000)
+    return () => clearInterval(t)
+  }, [documents, id])
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    try {
+      const created = await documentsApi.upload(id, Array.from(files))
+      setDocuments((prev) => [...created, ...prev])
+      toast({ title: "Upload concluído", description: `${created.length} arquivo(s)` })
+    } catch (err) {
+      toast({
+        title: "Falha no upload",
+        description: errorMessage(err),
+        variant: "destructive",
+      })
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
   }
 
-  const handleSyncCalendar = () => {
-    toast({
-      title: "Sincronização de calendário",
-      description: "Mock: Conectado ao Google Calendar",
-    })
+  const handleDeleteDoc = async (docId: string) => {
+    try {
+      await documentsApi.remove(id, docId)
+      setDocuments((prev) => prev.filter((d) => d.id !== docId))
+      toast({ title: "Documento removido" })
+    } catch (err) {
+      toast({
+        title: "Falha ao remover",
+        description: errorMessage(err),
+        variant: "destructive",
+      })
+    }
   }
+
+  if (loading) {
+    return (
+      <SidebarProvider>
+        <div className="flex min-h-screen w-full">
+          <AppSidebar />
+          <main className="flex-1 flex items-center justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </main>
+        </div>
+      </SidebarProvider>
+    )
+  }
+
+  if (!patient) {
+    return (
+      <SidebarProvider>
+        <div className="flex min-h-screen w-full">
+          <AppSidebar />
+          <main className="flex-1 flex items-center justify-center text-muted-foreground">
+            Paciente não encontrado.
+          </main>
+        </div>
+      </SidebarProvider>
+    )
+  }
+
+  const initials = patient.fullName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((s) => s.charAt(0).toUpperCase())
+    .join("")
+
+  const anamneses = timeline.filter((t) => t.type === "anamnesis")
+  const appointments = timeline.filter((t) => t.type === "appointment")
 
   return (
     <SidebarProvider>
@@ -125,336 +192,254 @@ export default function ClientDetailPage() {
           <div className="border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 z-10">
             <div className="flex items-center gap-4 px-6 py-4">
               <SidebarTrigger />
-              <Button variant="ghost" size="sm" onClick={() => router.back()}>
+              <Button variant="ghost" size="sm" onClick={() => router.push("/clients")}>
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Voltar
               </Button>
-              <h1 className="text-2xl font-bold text-foreground">{mockClient.name}</h1>
+              <h1 className="text-2xl font-bold text-foreground">{patient.fullName}</h1>
             </div>
           </div>
 
           <div className="p-6 space-y-6">
-            {/* Client Overview Card */}
             <Card>
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-2xl mb-2">{mockClient.name}</CardTitle>
-                    <CardDescription className="space-y-1">
-                      <div className="flex items-center gap-2">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-4">
+                  <Avatar className="w-16 h-16">
+                    <AvatarFallback className="bg-primary/10 text-primary text-xl">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 grid sm:grid-cols-2 gap-2 text-sm">
+                    {patient.email ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
                         <Mail className="w-4 h-4" />
-                        <span>{mockClient.email}</span>
+                        {patient.email}
                       </div>
-                      <div className="flex items-center gap-2">
+                    ) : null}
+                    {patient.phone ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
                         <Phone className="w-4 h-4" />
-                        <span>{mockClient.phone}</span>
+                        {patient.phone}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        <span>Nascimento: {new Date(mockClient.birthdate).toLocaleDateString("pt-BR")}</span>
+                    ) : null}
+                    {patient.cpf ? (
+                      <div className="text-muted-foreground">CPF: {patient.cpf}</div>
+                    ) : null}
+                    {patient.birthDate ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <CalendarIcon className="w-4 h-4" />
+                        {new Date(patient.birthDate).toLocaleDateString()}
                       </div>
-                    </CardDescription>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {mockClient.tags.map((tag, i) => (
-                      <Badge key={i} variant="secondary">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid sm:grid-cols-3 gap-4 pt-4 border-t border-border">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Última Visita</p>
-                    <p className="font-medium text-foreground">
-                      {new Date(mockClient.lastVisit).toLocaleDateString("pt-BR")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Dentista Responsável</p>
-                    <p className="font-medium text-foreground">{mockClient.dentist}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Especialidades</p>
-                    <p className="font-medium text-foreground">{mockClient.specialty}</p>
+                    ) : null}
+                    {patient.address ? (
+                      <div className="text-muted-foreground sm:col-span-2">{patient.address}</div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2 sm:col-span-2 mt-2">
+                      {patient.specialties.map((tag) => (
+                        <Badge key={tag} variant="secondary">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Tabs */}
-            <Tabs defaultValue="history" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-grid">
-                <TabsTrigger value="history">Histórico</TabsTrigger>
-                <TabsTrigger value="images">Imagens</TabsTrigger>
-                <TabsTrigger value="anamnesis">Anamnese</TabsTrigger>
-                <TabsTrigger value="planning">Planejamento</TabsTrigger>
-                <TabsTrigger value="odontogram">Odontograma</TabsTrigger>
+            <Tabs defaultValue="documents">
+              <TabsList>
+                <TabsTrigger value="documents">Documentos</TabsTrigger>
+                <TabsTrigger value="anamneses">Anamneses</TabsTrigger>
                 <TabsTrigger value="appointments">Consultas</TabsTrigger>
               </TabsList>
 
-              {/* History Tab */}
-              <TabsContent value="history" className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-foreground">Histórico de Tratamentos</h3>
-                  <Dialog open={isRecordDialogOpen} onOpenChange={setIsRecordDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Adicionar Registro
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Adicionar Registro de Tratamento</DialogTitle>
-                        <DialogDescription>Documentar um novo tratamento ou visita</DialogDescription>
-                      </DialogHeader>
-                      <form onSubmit={handleAddRecord} className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="recordDate">Data</Label>
-                          <Input
-                            id="recordDate"
-                            type="date"
-                            value={newRecord.date}
-                            onChange={(e) => setNewRecord({ ...newRecord, date: e.target.value })}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="recordNotes">Observações</Label>
-                          <Textarea
-                            id="recordNotes"
-                            placeholder="Detalhes do tratamento, observações, recomendações..."
-                            value={newRecord.notes}
-                            onChange={(e) => setNewRecord({ ...newRecord, notes: e.target.value })}
-                            rows={4}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Upload de Imagens</Label>
-                          <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary transition-colors cursor-pointer">
-                            <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">Clique para fazer upload ou arraste e solte</p>
-                          </div>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <Button type="button" variant="outline" onClick={() => setIsRecordDialogOpen(false)}>
-                            Cancelar
-                          </Button>
-                          <Button type="submit">Salvar Registro</Button>
-                        </div>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-
-                <div className="space-y-4">
-                  {mockHistory.map((record) => (
-                    <Card key={record.id}>
-                      <CardContent className="pt-6">
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <p className="font-semibold text-foreground">
-                                {new Date(record.date).toLocaleDateString("pt-BR")}
-                              </p>
-                              <Badge variant="outline">{record.images} imagens</Badge>
+              <TabsContent value="documents" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Documentos do paciente</CardTitle>
+                        <CardDescription>
+                          Envie arquivos para indexar e usar com o assistente
+                        </CardDescription>
+                      </div>
+                      <div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => handleFiles(e.target.files)}
+                        />
+                        <Button
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploading}
+                        >
+                          {uploading ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Upload className="w-4 h-4 mr-2" />
+                          )}
+                          Enviar arquivos
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {documents.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhum documento ainda.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {documents.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="flex items-center justify-between p-3 rounded-lg border"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-medium text-sm truncate">{doc.filename}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {(doc.sizeBytes / 1024).toFixed(1)} KB ·{" "}
+                                  {new Date(doc.createdAt).toLocaleString()}
+                                  {doc.ingestError ? ` · ${doc.ingestError}` : ""}
+                                </p>
+                              </div>
                             </div>
-                            <p className="text-muted-foreground mb-2">{record.notes}</p>
-                            <p className="text-sm text-muted-foreground">Dentista: {record.dentist}</p>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <StatusBadge status={doc.ingestStatus} />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteDoc(doc.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
-              {/* Images Tab */}
-              <TabsContent value="images" className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-foreground">Galeria de Imagens</h3>
-                  <Button>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload de Imagens
+              <TabsContent value="anamneses" className="space-y-4">
+                <div className="flex justify-end">
+                  <Button onClick={() => router.push(`/clients/${id}/anamnesis`)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Nova anamnese
                   </Button>
                 </div>
-
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {mockImages.map((image) => (
-                    <Card key={image.id} className="overflow-hidden">
-                      <div className="aspect-square bg-muted relative">
-                        <img
-                          src={image.url || "/placeholder.svg"}
-                          alt={image.type}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <CardContent className="pt-4">
-                        <p className="font-medium text-sm text-foreground mb-1">{image.type}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(image.date).toLocaleDateString("pt-BR")}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </TabsContent>
-
-              {/* Anamnesis Tab */}
-              <TabsContent value="anamnesis" className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-foreground">Anamnese do Paciente</h3>
-                  <Link href={`/clients/${params.id}/anamnesis`}>
-                    <Button>
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Editar Anamnese
-                    </Button>
-                  </Link>
-                </div>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-muted-foreground text-center py-8">
-                      Clique em "Editar Anamnese" para preencher ou atualizar os formulários de histórico médico do
-                      paciente
-                    </p>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Planning Tab */}
-              <TabsContent value="planning" className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-foreground">Planejamento de Tratamento</h3>
-                  <Link href={`/clients/${params.id}/planejamento`}>
-                    <Button>
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Ver Planejamento Completo
-                    </Button>
-                  </Link>
-                </div>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-muted-foreground text-center py-8">
-                      Clique em "Ver Planejamento Completo" para acessar o planejamento detalhado de tratamento do
-                      paciente
-                    </p>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Odontogram Tab */}
-              <TabsContent value="odontogram" className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-foreground">Odontograma</h3>
-                  <Link href={`/clients/${params.id}/odontograma`}>
-                    <Button>
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Editar Odontograma
-                    </Button>
-                  </Link>
-                </div>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-muted-foreground text-center py-8">
-                      Clique em "Editar Odontograma" para registrar procedimentos e detalhes de cada dente do paciente
-                    </p>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Appointments Tab */}
-              <TabsContent value="appointments" className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-foreground">Consultas</h3>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleSyncCalendar}>
-                      <Calendar className="w-4 h-4 mr-2" />
-                      Sincronizar Calendário
-                    </Button>
-                    <Dialog open={isAppointmentDialogOpen} onOpenChange={setIsAppointmentDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button>
-                          <Plus className="w-4 h-4 mr-2" />
-                          Adicionar Consulta
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Agendar Consulta</DialogTitle>
-                          <DialogDescription>Criar uma nova consulta para {mockClient.name}</DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleAddAppointment} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="aptDate">Data</Label>
-                            <Input
-                              id="aptDate"
-                              type="date"
-                              value={newAppointment.date}
-                              onChange={(e) => setNewAppointment({ ...newAppointment, date: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="aptTime">Horário</Label>
-                            <Input
-                              id="aptTime"
-                              type="time"
-                              value={newAppointment.time}
-                              onChange={(e) => setNewAppointment({ ...newAppointment, time: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="aptType">Tipo</Label>
-                            <Input
-                              id="aptType"
-                              placeholder="Limpeza, Check-up, Obturação, etc."
-                              value={newAppointment.type}
-                              onChange={(e) => setNewAppointment({ ...newAppointment, type: e.target.value })}
-                              required
-                            />
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <Button type="button" variant="outline" onClick={() => setIsAppointmentDialogOpen(false)}>
-                              Cancelar
-                            </Button>
-                            <Button type="submit">Agendar</Button>
-                          </div>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
+                {anamneses.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-8 text-center text-muted-foreground">
+                      Nenhuma anamnese registrada.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {anamneses.map((entry) => {
+                      if (entry.type !== "anamnesis") return null
+                      return (
+                        <Card key={entry.data.id}>
+                          <CardHeader>
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <CardTitle className="text-base">
+                                  {new Date(entry.at).toLocaleString()}
+                                </CardTitle>
+                                {entry.data.specialties.length > 0 ? (
+                                  <CardDescription>
+                                    {entry.data.specialties.join(", ")}
+                                  </CardDescription>
+                                ) : null}
+                              </div>
+                              <div className="flex gap-2 shrink-0">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    router.push(
+                                      `/clients/${id}/anamnesis?id=${entry.data.id}`,
+                                    )
+                                  }
+                                >
+                                  <Eye className="w-4 h-4 mr-1" />
+                                  Ver
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    router.push(
+                                      `/clients/${id}/anamnesis?id=${entry.data.id}&mode=edit`,
+                                    )
+                                  }
+                                >
+                                  <Pencil className="w-4 h-4 mr-1" />
+                                  Editar
+                                </Button>
+                              </div>
+                            </div>
+                          </CardHeader>
+                          {entry.data.chiefComplaint ? (
+                            <CardContent>
+                              <p className="text-sm">{entry.data.chiefComplaint}</p>
+                            </CardContent>
+                          ) : null}
+                        </Card>
+                      )
+                    })}
                   </div>
-                </div>
+                )}
+              </TabsContent>
 
-                <div className="space-y-3">
-                  {mockAppointments.map((apt) => (
-                    <Card key={apt.id}>
-                      <CardContent className="py-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-semibold text-foreground">
-                              {new Date(apt.date).toLocaleDateString("pt-BR")} às {apt.time}
-                            </p>
-                            <p className="text-sm text-muted-foreground">{apt.type}</p>
-                          </div>
-                          <Badge variant={apt.status === "Concluído" ? "secondary" : "default"}>{apt.status}</Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+              <TabsContent value="appointments" className="space-y-4">
+                {appointments.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-8 text-center text-muted-foreground">
+                      Nenhuma consulta registrada.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {appointments.map((entry) => {
+                      if (entry.type !== "appointment") return null
+                      return (
+                        <Card key={entry.data.id}>
+                          <CardHeader>
+                            <CardTitle className="text-base">
+                              {new Date(entry.data.startsAt).toLocaleString()}
+                            </CardTitle>
+                            <CardDescription>
+                              Status: {entry.data.status}
+                              {entry.data.reason ? ` · ${entry.data.reason}` : ""}
+                            </CardDescription>
+                          </CardHeader>
+                          {entry.data.notes ? (
+                            <CardContent>
+                              <p className="text-sm">{entry.data.notes}</p>
+                            </CardContent>
+                          ) : null}
+                        </Card>
+                      )
+                    })}
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>
         </main>
       </div>
     </SidebarProvider>
+  )
+}
+
+export default function ClientDetailPage() {
+  return (
+    <AuthGate>
+      <ClientDetailInner />
+    </AuthGate>
   )
 }

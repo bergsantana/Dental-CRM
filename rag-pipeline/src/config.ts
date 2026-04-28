@@ -9,6 +9,8 @@ export const config = {
   topK: Number.parseInt(process.env.TOP_K ?? "8", 10),
   rerank: (process.env.RERANK ?? "false").toLowerCase() === "true",
   collection: "patients",
+  authToken: process.env.RAG_AUTH_TOKEN ?? "",
+  allowedOrigin: process.env.ALLOWED_ORIGIN ?? "*",
 };
 
 export type Config = typeof config;

@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
+import { auth, authApi, clinicsApi } from "@/lib/api-client"
+import { errorMessage } from "@/lib/errors"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -24,15 +26,34 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
 
-    // Mock API call
-    setTimeout(() => {
+    try {
+      const { token } = await authApi.login(formData.email, formData.password)
+      auth.setToken(token)
+      const memberships = await clinicsApi.list()
+      const accepted = memberships.filter((m) => !m.pending)
+      if (accepted.length === 0) {
+        toast({
+          title: "Sem clínicas",
+          description: "Você ainda não pertence a nenhuma clínica. Crie ou aceite um convite.",
+        })
+        router.push("/companies")
+        return
+      }
+      if (accepted.length === 1) {
+        auth.setClinicId(accepted[0].id)
+        router.push("/dashboard")
+        return
+      }
+      router.push("/companies")
+    } catch (err) {
       toast({
-        title: "Bem-vindo de volta!",
-        description: "Login realizado com sucesso",
+        title: "Falha no login",
+        description: errorMessage(err),
+        variant: "destructive",
       })
+    } finally {
       setIsLoading(false)
-      router.push("/dashboard")
-    }, 1000)
+    }
   }
 
   const handleGoogleLogin = () => {

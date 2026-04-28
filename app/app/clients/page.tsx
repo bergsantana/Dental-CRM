@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
@@ -22,107 +22,93 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Search, Phone, Mail, CalendarIcon } from "lucide-react"
+import { Plus, Search, Phone, Mail, CalendarIcon, Loader2 } from "lucide-react"
+import { AuthGate } from "@/lib/auth-gate"
+import { patientsApi, type PatientSummary } from "@/lib/api-client"
+import { errorMessage } from "@/lib/errors"
 
-// Mock data
-const mockClients = [
-  {
-    id: 1,
-    name: "John Smith",
-    email: "john.smith@email.com",
-    phone: "(555) 123-4567",
-    lastAppointment: "2024-01-15",
-    specialty: "General",
-    tags: ["Regular", "Insurance"],
-  },
-  {
-    id: 2,
-    name: "Sarah Johnson",
-    email: "sarah.j@email.com",
-    phone: "(555) 234-5678",
-    lastAppointment: "2024-01-10",
-    specialty: "Orthodontics",
-    tags: ["New Patient"],
-  },
-  {
-    id: 3,
-    name: "Mike Davis",
-    email: "mike.davis@email.com",
-    phone: "(555) 345-6789",
-    lastAppointment: "2024-01-08",
-    specialty: "Implantology",
-    tags: ["VIP", "Regular"],
-  },
-  {
-    id: 4,
-    name: "Emma Wilson",
-    email: "emma.w@email.com",
-    phone: "(555) 456-7890",
-    lastAppointment: "2024-01-05",
-    specialty: "General",
-    tags: ["Regular"],
-  },
+const SPECIALTIES = [
+  { value: "general", label: "Clínica Geral" },
+  { value: "orthodontics", label: "Ortodontia" },
+  { value: "implantology", label: "Implantodontia" },
+  { value: "endodontics", label: "Endodontia" },
+  { value: "periodontics", label: "Periodontia" },
 ]
 
-export default function ClientsPage() {
+function ClientsPageInner() {
   const router = useRouter()
   const { toast } = useToast()
-  const [clients, setClients] = useState(mockClients)
+  const [clients, setClients] = useState<PatientSummary[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [newClient, setNewClient] = useState({
-    name: "",
+    fullName: "",
     email: "",
     phone: "",
-    birthdate: "",
+    cpf: "",
+    birthDate: "",
+    address: "",
     notes: "",
-    specialty: "General",
-    tags: "",
+    specialty: "general",
   })
 
-  const filteredClients = clients.filter(
-    (client) =>
-      client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.phone.includes(searchQuery),
-  )
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setLoading(true)
+      patientsApi
+        .list(searchQuery ? { search: searchQuery } : undefined)
+        .then(setClients)
+        .catch((err) => {
+          toast({
+            title: "Falha ao carregar pacientes",
+            description: errorMessage(err),
+            variant: "destructive",
+          })
+        })
+        .finally(() => setLoading(false))
+    }, 250)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery])
 
-  const handleCreateClient = (e: React.FormEvent) => {
+  const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    const client = {
-      id: clients.length + 1,
-      name: newClient.name,
-      email: newClient.email,
-      phone: newClient.phone,
-      lastAppointment: new Date().toISOString().split("T")[0],
-      specialty: newClient.specialty,
-      tags: newClient.tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
+    setSubmitting(true)
+    try {
+      const created = await patientsApi.create({
+        fullName: newClient.fullName,
+        email: newClient.email || undefined,
+        phone: newClient.phone || undefined,
+        cpf: newClient.cpf || undefined,
+        birthDate: newClient.birthDate || undefined,
+        address: newClient.address || undefined,
+        notes: newClient.notes || undefined,
+        specialties: newClient.specialty ? [newClient.specialty] : [],
+      })
+      setClients((prev) => [created, ...prev])
+      setIsDialogOpen(false)
+      setNewClient({
+        fullName: "",
+        email: "",
+        phone: "",
+        cpf: "",
+        birthDate: "",
+        address: "",
+        notes: "",
+        specialty: "general",
+      })
+      toast({ title: "Paciente cadastrado", description: created.fullName })
+    } catch (err) {
+      toast({
+        title: "Falha ao cadastrar",
+        description: errorMessage(err),
+        variant: "destructive",
+      })
+    } finally {
+      setSubmitting(false)
     }
-
-    setClients([...clients, client])
-    setIsDialogOpen(false)
-    setNewClient({
-      name: "",
-      email: "",
-      phone: "",
-      birthdate: "",
-      notes: "",
-      specialty: "General",
-      tags: "",
-    })
-
-    toast({
-      title: "Client added!",
-      description: `${newClient.name} has been added to your clients`,
-    })
-  }
-
-  const handleClientClick = (clientId: number) => {
-    router.push(`/clients/${clientId}`)
   }
 
   return (
@@ -133,17 +119,16 @@ export default function ClientsPage() {
           <div className="border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 z-10">
             <div className="flex items-center gap-4 px-6 py-4">
               <SidebarTrigger />
-              <h1 className="text-2xl font-bold text-foreground">Clients</h1>
+              <h1 className="text-2xl font-bold text-foreground">Pacientes</h1>
             </div>
           </div>
 
           <div className="p-6 space-y-6">
-            {/* Search and Actions */}
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search clients by name, email, or phone..."
+                  placeholder="Buscar por nome..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
@@ -153,96 +138,100 @@ export default function ClientsPage() {
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="w-4 h-4 mr-2" />
-                    New Client
+                    Novo paciente
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>Add New Client</DialogTitle>
-                    <DialogDescription>Create a new patient record</DialogDescription>
+                    <DialogTitle>Adicionar paciente</DialogTitle>
+                    <DialogDescription>Crie um novo registro de paciente</DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleCreateClient} className="space-y-4">
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="name">Full Name *</Label>
+                        <Label htmlFor="name">Nome completo *</Label>
                         <Input
                           id="name"
-                          placeholder="John Smith"
-                          value={newClient.name}
-                          onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
+                          value={newClient.fullName}
+                          onChange={(e) => setNewClient({ ...newClient, fullName: e.target.value })}
                           required
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="email">Email *</Label>
+                        <Label htmlFor="email">E-mail</Label>
                         <Input
                           id="email"
                           type="email"
-                          placeholder="john@example.com"
                           value={newClient.email}
                           onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
-                          required
                         />
                       </div>
                     </div>
 
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="phone">Phone *</Label>
+                        <Label htmlFor="phone">Telefone</Label>
                         <Input
                           id="phone"
-                          type="tel"
-                          placeholder="(555) 123-4567"
                           value={newClient.phone}
                           onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
-                          required
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="birthdate">Birthdate</Label>
+                        <Label htmlFor="cpf">CPF</Label>
                         <Input
-                          id="birthdate"
-                          type="date"
-                          value={newClient.birthdate}
-                          onChange={(e) => setNewClient({ ...newClient, birthdate: e.target.value })}
+                          id="cpf"
+                          value={newClient.cpf}
+                          onChange={(e) => setNewClient({ ...newClient, cpf: e.target.value })}
                         />
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="specialty">Dental Specialty</Label>
-                      <Select
-                        value={newClient.specialty}
-                        onValueChange={(value) => setNewClient({ ...newClient, specialty: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="General">General Dentistry</SelectItem>
-                          <SelectItem value="Orthodontics">Orthodontics</SelectItem>
-                          <SelectItem value="Implantology">Implantology</SelectItem>
-                          <SelectItem value="Endodontics">Endodontics</SelectItem>
-                          <SelectItem value="Periodontics">Periodontics</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="birthDate">Nascimento</Label>
+                        <Input
+                          id="birthDate"
+                          type="date"
+                          value={newClient.birthDate}
+                          onChange={(e) => setNewClient({ ...newClient, birthDate: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="specialty">Especialidade</Label>
+                        <Select
+                          value={newClient.specialty}
+                          onValueChange={(value) =>
+                            setNewClient({ ...newClient, specialty: value })
+                          }
+                        >
+                          <SelectTrigger id="specialty">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SPECIALTIES.map((s) => (
+                              <SelectItem key={s.value} value={s.value}>
+                                {s.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="tags">Tags (comma-separated)</Label>
+                      <Label htmlFor="address">Endereço</Label>
                       <Input
-                        id="tags"
-                        placeholder="VIP, Regular, Insurance"
-                        value={newClient.tags}
-                        onChange={(e) => setNewClient({ ...newClient, tags: e.target.value })}
+                        id="address"
+                        value={newClient.address}
+                        onChange={(e) => setNewClient({ ...newClient, address: e.target.value })}
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="notes">Notes</Label>
+                      <Label htmlFor="notes">Observações</Label>
                       <Textarea
                         id="notes"
-                        placeholder="Additional notes about the patient..."
                         value={newClient.notes}
                         onChange={(e) => setNewClient({ ...newClient, notes: e.target.value })}
                         rows={3}
@@ -250,69 +239,102 @@ export default function ClientsPage() {
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4">
-                      <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancel
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsDialogOpen(false)}
+                      >
+                        Cancelar
                       </Button>
-                      <Button type="submit">Add Client</Button>
+                      <Button type="submit" disabled={submitting}>
+                        {submitting ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : null}
+                        Adicionar
+                      </Button>
                     </div>
                   </form>
                 </DialogContent>
               </Dialog>
             </div>
 
-            {/* Clients Grid */}
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredClients.map((client) => (
-                <Card
-                  key={client.id}
-                  className="hover:border-primary transition-colors cursor-pointer"
-                  onClick={() => handleClientClick(client.id)}
-                >
-                  <CardContent className="pt-6 space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg text-foreground mb-1">{client.name}</h3>
-                        <p className="text-sm text-muted-foreground">{client.specialty}</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Mail className="w-4 h-4" />
-                        <span className="truncate">{client.email}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Phone className="w-4 h-4" />
-                        <span>{client.phone}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <CalendarIcon className="w-4 h-4" />
-                        <span>Last visit: {new Date(client.lastAppointment).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {client.tags.map((tag, i) => (
-                        <Badge key={i} variant="secondary" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {filteredClients.length === 0 && (
-              <Card className="border-dashed border-2">
-                <CardContent className="py-12 text-center">
-                  <p className="text-muted-foreground">No clients found matching your search</p>
+            {loading ? (
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                 </CardContent>
               </Card>
+            ) : clients.length === 0 ? (
+              <Card className="border-dashed border-2">
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  Nenhum paciente encontrado.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {clients.map((client) => (
+                  <Card
+                    key={client.id}
+                    className="hover:border-primary transition-colors cursor-pointer"
+                    onClick={() => router.push(`/clients/${client.id}`)}
+                  >
+                    <CardContent className="pt-6 space-y-4">
+                      <div>
+                        <h3 className="font-semibold text-lg text-foreground mb-1">
+                          {client.fullName}
+                        </h3>
+                        {client.specialties.length > 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            {client.specialties.join(", ")}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-2 text-sm">
+                        {client.email ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Mail className="w-4 h-4" />
+                            <span className="truncate">{client.email}</span>
+                          </div>
+                        ) : null}
+                        {client.phone ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Phone className="w-4 h-4" />
+                            <span>{client.phone}</span>
+                          </div>
+                        ) : null}
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <CalendarIcon className="w-4 h-4" />
+                          <span>
+                            Cadastrado em{" "}
+                            {new Date(client.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {client.specialties.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             )}
           </div>
         </main>
       </div>
     </SidebarProvider>
+  )
+}
+
+export default function ClientsPage() {
+  return (
+    <AuthGate>
+      <ClientsPageInner />
+    </AuthGate>
   )
 }

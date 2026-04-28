@@ -1,10 +1,13 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { TopNav } from "@/components/top-nav"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, Calendar, FileText, TrendingUp } from "lucide-react"
+import { Users, Calendar, FileText, TrendingUp, Sparkles } from "lucide-react"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
 import {
   LineChart,
   Line,
@@ -17,6 +20,8 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts"
+import { AuthGate } from "@/lib/auth-gate"
+import { appointmentsApi, patientsApi } from "@/lib/api-client"
 
 const appointmentsData = [
   { dia: "Seg", consultas: 12 },
@@ -38,7 +43,27 @@ const financialData = [
 ]
 
 export default function DashboardPage() {
+  const [patientCount, setPatientCount] = useState<number | null>(null)
+  const [todayCount, setTodayCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    patientsApi
+      .list()
+      .then((p) => setPatientCount(p.length))
+      .catch(() => setPatientCount(null))
+
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    const end = new Date()
+    end.setHours(23, 59, 59, 999)
+    appointmentsApi
+      .list({ from: start.toISOString(), to: end.toISOString() })
+      .then((a) => setTodayCount(a.length))
+      .catch(() => setTodayCount(null))
+  }, [])
+
   return (
+    <AuthGate>
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <AppSidebar />
@@ -54,6 +79,23 @@ export default function DashboardPage() {
           </div>
 
           <div className="p-6 space-y-6">
+            <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+              <CardContent className="p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-6 h-6 text-primary mt-1" />
+                  <div>
+                    <CardTitle className="text-lg">Assistente clínico</CardTitle>
+                    <CardDescription className="mt-1">
+                      Pergunte sobre o histórico do paciente. Resumos baseados nos documentos enviados — não substituem orientação médica.
+                    </CardDescription>
+                  </div>
+                </div>
+                <Link href="/assistant">
+                  <Button>Falar com o assistente</Button>
+                </Link>
+              </CardContent>
+            </Card>
+
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -61,8 +103,10 @@ export default function DashboardPage() {
                   <Users className="w-4 h-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-foreground">248</div>
-                  <p className="text-xs text-muted-foreground mt-1">+12% em relação ao mês passado</p>
+                  <div className="text-2xl font-bold text-foreground">
+                    {patientCount ?? "—"}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Cadastrados na clínica</p>
                 </CardContent>
               </Card>
 
@@ -72,8 +116,10 @@ export default function DashboardPage() {
                   <Calendar className="w-4 h-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-foreground">12</div>
-                  <p className="text-xs text-muted-foreground mt-1">3 aguardando confirmação</p>
+                  <div className="text-2xl font-bold text-foreground">
+                    {todayCount ?? "—"}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Agendadas para hoje</p>
                 </CardContent>
               </Card>
 
@@ -217,5 +263,6 @@ export default function DashboardPage() {
         </main>
       </div>
     </SidebarProvider>
+    </AuthGate>
   )
 }

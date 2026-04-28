@@ -1,4 +1,5 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import cors from "@fastify/cors";
 import { z } from "zod";
 import { config } from "./config.js";
 import { retrieve } from "./retrieve/retriever.js";
@@ -6,8 +7,28 @@ import { rerank } from "./retrieve/reranker.js";
 import { chatStream } from "./generate/ollamaChat.js";
 import { SYSTEM_PROMPT, buildUserMessage } from "./generate/prompt.js";
 import { ingest } from "./ingest/ingest.js";
+import { deleteByPatient, listPatientSources } from "./store/chromaClient.js";
 
 const app = Fastify({ logger: true });
+
+await app.register(cors, {
+  origin: config.allowedOrigin === "*" ? true : config.allowedOrigin.split(","),
+  methods: ["GET", "POST", "DELETE", "OPTIONS"],
+});
+
+/**
+ * Bearer-token auth. Skipped for health probes so container orchestrators
+ * can check liveness without a secret. When `RAG_AUTH_TOKEN` is empty the
+ * hook is a no-op (development convenience).
+ */
+app.addHook("onRequest", async (req, reply) => {
+  if (!config.authToken) return;
+  if (req.url === "/health" || req.url === "/v1/health") return;
+  const header = req.headers["authorization"];
+  if (typeof header !== "string" || header !== `Bearer ${config.authToken}`) {
+    reply.code(401).send({ error: "unauthorized" });
+  }
+});
 
 const ChatBody = z.object({
   patientId: z.string().min(1),
@@ -20,33 +41,38 @@ const IngestBody = z.object({
   patientId: z.string().min(1),
   dir: z.string().optional(),
   file: z.string().optional(),
+  files: z
+    .array(z.object({ path: z.string().min(1), mime: z.string().optional() }))
+    .optional(),
 });
 
-app.get("/health", async () => ({
+const healthHandler = async () => ({
   ok: true,
   ollama: config.ollamaUrl,
   chroma: config.chromaUrl,
   model: config.llmModel,
-}));
+});
 
-app.post("/ingest", async (req, reply) => {
+app.get("/health", healthHandler);
+app.get("/v1/health", healthHandler);
+
+async function ingestHandler(req: FastifyRequest, reply: FastifyReply) {
   const parsed = IngestBody.safeParse(req.body);
   if (!parsed.success) {
     return reply.code(400).send({ error: parsed.error.flatten() });
   }
-  const result = await ingest({
+  return ingest({
     patient: parsed.data.patientId,
     dir: parsed.data.dir,
     file: parsed.data.file,
+    files: parsed.data.files,
   });
-  return result;
-});
+}
 
-/**
- * POST /chat — streams the answer as Server-Sent Events.
- * Each event has `data: <token>`; a final `event: done` event closes.
- */
-app.post("/chat", async (req, reply) => {
+app.post("/ingest", ingestHandler);
+app.post("/v1/ingest", ingestHandler);
+
+async function chatHandler(req: FastifyRequest, reply: FastifyReply) {
   const parsed = ChatBody.safeParse(req.body);
   if (!parsed.success) {
     return reply.code(400).send({ error: parsed.error.flatten() });
@@ -86,7 +112,22 @@ app.post("/chat", async (req, reply) => {
   } finally {
     reply.raw.end();
   }
+}
+
+app.post("/chat", chatHandler);
+app.post("/v1/chat", chatHandler);
+
+app.get<{ Params: { id: string } }>("/v1/patients/:id/sources", async (req) => {
+  return { sources: await listPatientSources(req.params.id) };
 });
+
+app.delete<{ Params: { id: string }; Querystring: { source?: string } }>(
+  "/v1/patients/:id/sources",
+  async (req, reply) => {
+    await deleteByPatient(req.params.id, req.query.source);
+    return reply.code(204).send();
+  },
+);
 
 app.listen({ port: config.port, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);

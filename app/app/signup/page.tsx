@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
+import { auth, authApi } from "@/lib/api-client"
+import { errorMessage } from "@/lib/errors"
 
 export default function SignUpPage() {
   const router = useRouter()
@@ -19,6 +21,7 @@ export default function SignUpPage() {
     email: "",
     password: "",
     confirmPassword: "",
+    clinicName: "",
   })
   const [isLoading, setIsLoading] = useState(false)
 
@@ -36,15 +39,29 @@ export default function SignUpPage() {
 
     setIsLoading(true)
 
-    // Mock API call
-    setTimeout(() => {
+    try {
+      const { token, clinic } = await authApi.signup({
+        email: formData.email,
+        password: formData.password,
+        fullName: formData.name,
+        clinicName: formData.clinicName,
+      })
+      auth.setToken(token)
+      auth.setClinicId(clinic.id)
       toast({
         title: "Conta criada!",
         description: "Bem-vindo ao CRM Dental Inteligente",
       })
+      router.push("/dashboard")
+    } catch (err) {
+      toast({
+        title: "Falha no cadastro",
+        description: errorMessage(err),
+        variant: "destructive",
+      })
+    } finally {
       setIsLoading(false)
-      router.push("/companies")
-    }, 1000)
+    }
   }
 
   const handleGoogleSignUp = () => {
@@ -106,6 +123,17 @@ export default function SignUpPage() {
                 placeholder="Dr. João Silva"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="clinicName">Nome da Clínica</Label>
+              <Input
+                id="clinicName"
+                placeholder="Clínica Centro"
+                value={formData.clinicName}
+                onChange={(e) => setFormData({ ...formData, clinicName: e.target.value })}
                 required
               />
             </div>
