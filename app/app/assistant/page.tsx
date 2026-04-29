@@ -300,7 +300,9 @@ function AssistantPageInner() {
                           : "bg-muted"
                       }`}
                     >
-                      <div className="whitespace-pre-wrap text-sm">{m.content || (streaming ? "..." : "")}</div>
+                      <div className="whitespace-pre-wrap text-sm">
+                        {m.content || (streaming ? "Processando resposta clínica..." : "")}
+                      </div>
                       {m.role === "assistant" && m.metrics ? (
                         <TooltipProvider>
                           <div className="mt-2 flex flex-wrap items-center gap-1">
