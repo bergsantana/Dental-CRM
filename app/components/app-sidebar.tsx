@@ -14,7 +14,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar"
-import { LayoutDashboard, Users, Calendar, Settings, LogOut, Building2, ClipboardList, Sparkles } from "lucide-react"
+import { LayoutDashboard, Users, Calendar, LogOut, Building2, ClipboardList, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/api-client"
 import { useActiveClinic } from "@/lib/use-active-clinic"
@@ -25,7 +25,6 @@ const menuItems = [
   { title: "Assistente", icon: Sparkles, href: "/assistant" },
   { title: "Minha Agenda", icon: ClipboardList, href: "/minha-agenda" },
   { title: "Agenda Geral", icon: Calendar, href: "/calendar" },
-  { title: "Configurações", icon: Settings, href: "/settings" },
 ]
 
 export function AppSidebar() {
