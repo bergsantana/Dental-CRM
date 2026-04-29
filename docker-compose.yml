@@ -26,7 +26,7 @@ services:
       ADMINER_DESIGN: pepa-linha
     ports:
       - "8080:8080"
-  # Run this locally with `ollama serve` for best performance. If you want to run it in Docker, uncomment this service and the corresponding volume, and make sure to pull the required models into the container (e.g. `ollama pull llama3:8b` and `ollama pull nomic-embed-text`).
+  # Run this locally with `ollama serve` for best performance. If you want to run it in Docker, uncomment this service and the corresponding volume, and make sure to pull the required models into the container (e.g. `ollama pull phi3:mini` and `ollama pull nomic-embed-text`).
   # @TODO: Replace Ollama for a more lightweight, container-friendly LLM solution to simplify 
   #the stack and reduce resource usage.
 
@@ -56,7 +56,7 @@ services:
     environment:
       OLLAMA_URL: http://0.0.0.0:11434
       CHROMA_URL: http://chroma:8000
-      LLM_MODEL: ${LLM_MODEL:-llama3:8b}
+      LLM_MODEL: ${LLM_MODEL:-phi3:mini}
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
       PORT: 3000
       RAG_AUTH_TOKEN: ${RAG_AUTH_TOKEN:-changeme}

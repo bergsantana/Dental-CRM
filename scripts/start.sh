@@ -3,7 +3,7 @@
 # Dental-CRM bootstrap
 #
 # - Ensures host Ollama is running and reachable from containers (0.0.0.0).
-# - Pulls required Ollama models (llama3:8b, nomic-embed-text).
+# - Pulls required Ollama models (phi3:mini, nomic-embed-text).
 # - Copies *.env.example -> *.env on first run.
 # - Builds and starts the stack with docker compose.
 # - Waits for services to become healthy and tails relevant logs.
@@ -17,7 +17,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
-OLLAMA_MODELS=("llama3:8b" "nomic-embed-text")
+OLLAMA_MODELS=("phi3:mini" "nomic-embed-text")
 OLLAMA_LOG="${TMPDIR:-/tmp}/dental-crm-ollama.log"
 
 c_red()    { printf '\033[31m%s\033[0m\n' "$*" >&2; }

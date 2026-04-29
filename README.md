@@ -31,7 +31,7 @@ This repository is an academic project ("Oficina 2").
                                             │                                  ▼
                                             ▼                         ┌────────────────────┐
                                     ┌──────────────┐                  │  Ollama  :11434    │
-                                    │ Postgres :5432│                  │  llama3:8b         │
+                                    │ Postgres :5432│                  │  phi3:mini         │
                                     └──────────────┘                  │  nomic-embed-text  │
                                                                       └────────────────────┘
                                                                               ▲
@@ -51,7 +51,7 @@ enforced server-side via a Chroma metadata filter on `patientId`.
 - **API** — NestJS 11, Drizzle ORM, Postgres 16, JWT, class-validator.
 - **RAG** — Fastify, langchain text splitters, chromadb client,
   `@xenova/transformers` (optional cross-encoder reranker), Ollama
-  (`llama3:8b` + `nomic-embed-text`), pdf-parse, cheerio.
+  (`phi3:mini` + `nomic-embed-text`), pdf-parse, cheerio.
 
 ## Running the project
 
@@ -76,7 +76,7 @@ The script is idempotent and:
 
 1. Verifies tooling (`docker`, `ollama`, `curl`).
 2. Restarts Ollama on `0.0.0.0:11434` if it's bound to loopback.
-3. Pulls `llama3:8b` and `nomic-embed-text` if missing.
+3. Pulls `phi3:mini` and `nomic-embed-text` if missing.
 4. Seeds `api/.env` and `rag-pipeline/.env` from `*.env.example` on first run.
 5. Builds images and starts the stack.
 6. Waits for Postgres / API / RAG health and prints all URLs.

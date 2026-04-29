@@ -2,7 +2,7 @@ name: dental-rag
 
 # Ollama is expected to run on the host machine (localhost:11434).
 # Start it with `ollama serve` and pull required models, e.g.:
-#   ollama pull llama3:8b
+#   ollama pull phi3:mini
 #   ollama pull nomic-embed-text
 
 services:
@@ -35,7 +35,7 @@ services:
       # extra_hosts below, on Linux too).
       OLLAMA_URL: ${OLLAMA_URL:-http://0.0.0.0:11434}
       CHROMA_URL: http://chroma:8000
-      LLM_MODEL: ${LLM_MODEL:-llama3:8b}
+      LLM_MODEL: ${LLM_MODEL:-phi3:mini}
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
       PORT: "3000"
       TOP_K: "8"
