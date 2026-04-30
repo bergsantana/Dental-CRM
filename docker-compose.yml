@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dental}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dental}
+      POSTGRES_DB: ${POSTGRES_DB:-dental_crm}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dental}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+    ports:
+      - "8080:8080"
+  # Run this locally with `ollama serve` for best performance. If you want to run it in Docker, uncomment this service and the corresponding volume, and make sure to pull the required models into the container (e.g. `ollama pull phi3:mini` and `ollama pull nomic-embed-text`).
+  # @TODO: Replace Ollama for a more lightweight, container-friendly LLM solution to simplify 
+  #the stack and reduce resource usage.
+
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+
+  chroma:
+    image: chromadb/chroma:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/.chroma/index
+
+  rag:
+    build:
+      context: ./rag-pipeline
+    restart: unless-stopped
+    # depends_on:
+    #   - ollama
+    #   - chroma
+    environment:
+      OLLAMA_URL: http://0.0.0.0:11434
+      CHROMA_URL: http://chroma:8000
+      LLM_MODEL: ${LLM_MODEL:-phi3:mini}
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      PORT: 3000
+      RAG_AUTH_TOKEN: ${RAG_AUTH_TOKEN:-changeme}
+      ALLOWED_ORIGIN: http://api:4000
+    volumes:
+      - ./api/data:/app/data
+    ports:
+      - "3000:3000"
+
+  api:
+    build:
+      context: ./api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3567}
+      DATABASE_URL: postgres://${POSTGRES_USER:-dental}:${POSTGRES_PASSWORD:-dental}@postgres:5432/${POSTGRES_DB:-dental_crm}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      RAG_URL: http://rag:3000
+      RAG_AUTH_TOKEN: ${RAG_AUTH_TOKEN:-changeme}
+      DOCUMENTS_DIR: /app/data/documents
+    volumes:
+      - ./api/data:/app/data
+    ports:
+      - "4000:4000"
+
+volumes:
+  postgres-data:
+  ollama-data:
+  chroma-data:

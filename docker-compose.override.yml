@@ -1,0 +1,35 @@
+services:
+  api:
+    # Dev override: hot reload via `nest start --watch`.
+    command: ["sh", "-c", "pnpm install --prefer-offline --no-frozen-lockfile && pnpm db:migrate && pnpm start:dev"]
+    volumes:
+      - ./api:/app
+      # Anonymous volume preserves image-baked node_modules so the bind-mount
+      # above doesn't mask them. We intentionally do NOT mount /app/dist so
+      # `nest start --watch` can rebuild the dist folder freely.
+      - /app/node_modules
+    environment:
+      # Polling makes the watcher reliable across hosts (WSL2, some FUSE mounts).
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "500"
+      # Make pnpm non-interactive (no "purge node_modules?" prompt).
+      CI: "true"
+
+  rag:
+    # Dev override: hot reload via `tsx watch`.
+    command: ["sh", "-c", "pnpm install --prefer-offline --no-frozen-lockfile && pnpm dev"]
+    volumes:
+      - ./rag-pipeline:/app
+      - /app/node_modules
+    # Reach the host's `ollama serve` from inside the container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "500"
+      CI: "true"
+      # Image bakes NODE_ENV=production which makes pnpm skip devDeps (tsx).
+      NODE_ENV: "development"
+      # Override the compose default (`http://ollama:11434`) since the
+      # `ollama` compose service is disabled and we use the host's daemon.
+      OLLAMA_URL: "http://host.docker.internal:11434"

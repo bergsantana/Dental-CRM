@@ -12,7 +12,7 @@ export function TopNav() {
     {
       label: "Pacientes",
       icon: Users,
-      href: "/pacientes",
+      href: "/clients",
     },
     {
       label: "Financeiro",

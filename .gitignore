@@ -25,3 +25,8 @@ Thumbs.db
 
 # Docker volumes (local)
 **/chroma-data/
+
+# Virtual environments
+venv/
+.venv/
+env/
