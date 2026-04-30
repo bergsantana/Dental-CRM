@@ -22,7 +22,16 @@ export class PatientsService {
   async list(clinicId: string, opts: { search?: string; specialty?: string }) {
     const conds = [eq(patients.clinicId, clinicId), isNull(patients.deletedAt)];
     if (opts.search) {
-      conds.push(ilike(patients.fullName, `%${opts.search}%`));
+      const term = opts.search.trim();
+      // Match by name (ILIKE) or by CPF (digits-only fragment).
+      const digits = term.replace(/\D+/g, '');
+      if (digits.length > 0) {
+        conds.push(
+          sql`(${patients.fullName} ILIKE ${'%' + term + '%'} OR regexp_replace(coalesce(${patients.cpf}, ''), '\\D', '', 'g') ILIKE ${'%' + digits + '%'})`,
+        );
+      } else {
+        conds.push(ilike(patients.fullName, `%${term}%`));
+      }
     }
     if (opts.specialty) {
       conds.push(sql`${opts.specialty} = ANY(${patients.specialties})`);

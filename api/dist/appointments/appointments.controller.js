@@ -23,6 +23,7 @@ const roles_guard_1 = require("../common/guards/roles.guard");
 const appointments_service_1 = require("./appointments.service");
 const create_appointment_dto_1 = require("./dto/create-appointment.dto");
 const update_appointment_dto_1 = require("./dto/update-appointment.dto");
+const cancel_appointment_dto_1 = require("./dto/cancel-appointment.dto");
 let AppointmentsController = class AppointmentsController {
     appointments;
     constructor(appointments) {
@@ -41,11 +42,31 @@ let AppointmentsController = class AppointmentsController {
             to: to ? new Date(to) : undefined,
         });
     }
+    get(ctx, id) {
+        return this.appointments.getById(ctx.clinicId, id);
+    }
+    listForPatient(ctx, patientId, upcoming, limit, from, to) {
+        return this.appointments.listForPatient(ctx.clinicId, patientId, {
+            upcoming: upcoming === 'true',
+            limit: limit ? Math.max(1, Math.min(100, Number(limit))) : undefined,
+            from: from ? new Date(from) : undefined,
+            to: to ? new Date(to) : undefined,
+        });
+    }
     create(ctx, user, dto) {
         return this.appointments.create(ctx.clinicId, user.userId, dto);
     }
     update(ctx, user, id, dto) {
         return this.appointments.update(ctx.clinicId, user.userId, ctx.role, id, dto);
+    }
+    cancel(ctx, user, id, dto) {
+        return this.appointments.cancel(ctx.clinicId, user.userId, ctx.role, id, dto?.reason);
+    }
+    approve(ctx, user, id) {
+        return this.appointments.approve(ctx.clinicId, user.userId, ctx.role, id);
+    }
+    reject(ctx, user, id, dto) {
+        return this.appointments.reject(ctx.clinicId, user.userId, ctx.role, id, dto?.reason);
     }
 };
 exports.AppointmentsController = AppointmentsController;
@@ -70,6 +91,28 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], AppointmentsController.prototype, "myAppointments", null);
 __decorate([
+    (0, common_1.UseGuards)(clinic_context_guard_1.ClinicContextGuard),
+    (0, common_1.Get)('appointments/:id'),
+    __param(0, (0, clinic_context_decorator_1.ActiveClinic)()),
+    __param(1, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", void 0)
+], AppointmentsController.prototype, "get", null);
+__decorate([
+    (0, common_1.UseGuards)(clinic_context_guard_1.ClinicContextGuard),
+    (0, common_1.Get)('patients/:patientId/appointments'),
+    __param(0, (0, clinic_context_decorator_1.ActiveClinic)()),
+    __param(1, (0, common_1.Param)('patientId', common_1.ParseUUIDPipe)),
+    __param(2, (0, common_1.Query)('upcoming')),
+    __param(3, (0, common_1.Query)('limit')),
+    __param(4, (0, common_1.Query)('from')),
+    __param(5, (0, common_1.Query)('to')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, String, String, String, String]),
+    __metadata("design:returntype", void 0)
+], AppointmentsController.prototype, "listForPatient", null);
+__decorate([
     (0, common_1.UseGuards)(clinic_context_guard_1.ClinicContextGuard, roles_guard_1.RolesGuard),
     (0, roles_decorator_1.Roles)('owner', 'dentist', 'receptionist'),
     (0, common_1.Post)('appointments'),
@@ -81,7 +124,8 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], AppointmentsController.prototype, "create", null);
 __decorate([
-    (0, common_1.UseGuards)(clinic_context_guard_1.ClinicContextGuard),
+    (0, common_1.UseGuards)(clinic_context_guard_1.ClinicContextGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('owner', 'dentist', 'receptionist'),
     (0, common_1.Patch)('appointments/:id'),
     __param(0, (0, clinic_context_decorator_1.ActiveClinic)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
@@ -91,6 +135,41 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object, String, update_appointment_dto_1.UpdateAppointmentDto]),
     __metadata("design:returntype", void 0)
 ], AppointmentsController.prototype, "update", null);
+__decorate([
+    (0, common_1.UseGuards)(clinic_context_guard_1.ClinicContextGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('owner', 'dentist', 'receptionist'),
+    (0, common_1.Delete)('appointments/:id'),
+    __param(0, (0, clinic_context_decorator_1.ActiveClinic)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __param(2, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(3, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object, String, cancel_appointment_dto_1.CancelAppointmentDto]),
+    __metadata("design:returntype", void 0)
+], AppointmentsController.prototype, "cancel", null);
+__decorate([
+    (0, common_1.UseGuards)(clinic_context_guard_1.ClinicContextGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('owner', 'dentist', 'receptionist'),
+    (0, common_1.Post)('appointments/:id/approve'),
+    __param(0, (0, clinic_context_decorator_1.ActiveClinic)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __param(2, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object, String]),
+    __metadata("design:returntype", void 0)
+], AppointmentsController.prototype, "approve", null);
+__decorate([
+    (0, common_1.UseGuards)(clinic_context_guard_1.ClinicContextGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('owner', 'dentist', 'receptionist'),
+    (0, common_1.Post)('appointments/:id/reject'),
+    __param(0, (0, clinic_context_decorator_1.ActiveClinic)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __param(2, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(3, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object, String, cancel_appointment_dto_1.CancelAppointmentDto]),
+    __metadata("design:returntype", void 0)
+], AppointmentsController.prototype, "reject", null);
 exports.AppointmentsController = AppointmentsController = __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Controller)({ version: '1' }),

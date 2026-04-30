@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.chatMessages = exports.chatSessions = exports.patientDocuments = exports.anamneses = exports.appointments = exports.patients = exports.clinicMembers = exports.clinics = exports.users = exports.chatRoleEnum = exports.ingestStatusEnum = exports.appointmentStatusEnum = exports.clinicRoleEnum = void 0;
+exports.bookingTokens = exports.chatMessages = exports.chatSessions = exports.patientDocuments = exports.anamneses = exports.appointments = exports.patients = exports.clinicMembers = exports.clinics = exports.users = exports.chatRoleEnum = exports.ingestStatusEnum = exports.appointmentStatusEnum = exports.clinicRoleEnum = void 0;
 const pg_core_1 = require("drizzle-orm/pg-core");
 const drizzle_orm_1 = require("drizzle-orm");
 exports.clinicRoleEnum = (0, pg_core_1.pgEnum)('clinic_role', [
@@ -10,6 +10,7 @@ exports.clinicRoleEnum = (0, pg_core_1.pgEnum)('clinic_role', [
     'receptionist',
 ]);
 exports.appointmentStatusEnum = (0, pg_core_1.pgEnum)('appointment_status', [
+    'requested',
     'scheduled',
     'confirmed',
     'completed',
@@ -210,5 +211,25 @@ exports.chatMessages = (0, pg_core_1.pgTable)('chat_messages', {
     createdAt: (0, pg_core_1.timestamp)('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
     bySession: (0, pg_core_1.index)('chat_messages_session_idx').on(t.sessionId, t.createdAt),
+}));
+exports.bookingTokens = (0, pg_core_1.pgTable)('booking_tokens', {
+    id: (0, pg_core_1.uuid)('id').primaryKey().defaultRandom(),
+    clinicId: (0, pg_core_1.uuid)('clinic_id')
+        .notNull()
+        .references(() => exports.clinics.id, { onDelete: 'cascade' }),
+    patientId: (0, pg_core_1.uuid)('patient_id')
+        .notNull()
+        .references(() => exports.patients.id, { onDelete: 'cascade' }),
+    tokenHash: (0, pg_core_1.text)('token_hash').notNull(),
+    expiresAt: (0, pg_core_1.timestamp)('expires_at', { withTimezone: true }).notNull(),
+    usedAt: (0, pg_core_1.timestamp)('used_at', { withTimezone: true }),
+    createdBy: (0, pg_core_1.uuid)('created_by')
+        .notNull()
+        .references(() => exports.users.id),
+    createdAt: (0, pg_core_1.timestamp)('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+    hashUq: (0, pg_core_1.uniqueIndex)('booking_tokens_hash_uq').on(t.tokenHash),
+    byPatient: (0, pg_core_1.index)('booking_tokens_patient_idx').on(t.patientId),
+    byClinic: (0, pg_core_1.index)('booking_tokens_clinic_idx').on(t.clinicId),
 }));
 //# sourceMappingURL=schema.js.map

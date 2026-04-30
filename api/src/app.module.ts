@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AnamnesesModule } from './anamneses/anamneses.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
+import { BookingModule } from './booking/booking.module';
 import { ChatModule } from './chat/chat.module';
 import { ClinicsModule } from './clinics/clinics.module';
 import { DbModule } from './db/db.module';
@@ -20,6 +21,7 @@ import { RagModule } from './rag/rag.module';
     PatientsModule,
     AnamnesesModule,
     AppointmentsModule,
+    BookingModule,
     DocumentsModule,
     ChatModule,
   ],

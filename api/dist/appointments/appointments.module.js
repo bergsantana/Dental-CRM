@@ -17,6 +17,7 @@ exports.AppointmentsModule = AppointmentsModule = __decorate([
     (0, common_1.Module)({
         providers: [appointments_service_1.AppointmentsService],
         controllers: [appointments_controller_1.AppointmentsController],
+        exports: [appointments_service_1.AppointmentsService],
     })
 ], AppointmentsModule);
 //# sourceMappingURL=appointments.module.js.map

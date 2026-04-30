@@ -15,6 +15,8 @@ import {
   documentsApi,
   patientsApi,
   streamChat,
+  type ChatActionPayload,
+  type ChatActionResult,
   type ChatMessage,
   type PatientDocument,
   type PatientSummary,
@@ -22,6 +24,8 @@ import {
   type SourceRef,
 } from "@/lib/api-client"
 import { AuthGate } from "@/lib/auth-gate"
+import { parseChatCommand } from "@/lib/chat-commands"
+import { errorMessage } from "@/lib/errors"
 import { formatScorePct, scoreColorClass } from "@/lib/utils"
 import {
   Tooltip,
@@ -40,6 +44,8 @@ interface UiMessage {
     groundedness: number | null
     answerRelevance: number | null
   }
+  /** When set, render an inline confirmation card with Confirmar/Cancelar. */
+  pendingAction?: ChatActionPayload
 }
 
 export default function AssistantPage() {
@@ -138,6 +144,14 @@ function AssistantPageInner() {
   function send() {
     const q = input.trim()
     if (!q || !sessionId || streaming) return
+
+    // Slash-command branch: parsed locally, never hits the SSE stream.
+    if (q.startsWith("/")) {
+      setInput("")
+      void runSlashCommand(q)
+      return
+    }
+
     setInput("")
     const userMsg: UiMessage = { id: `u-${Date.now()}`, role: "user", content: q }
     const assistantId = `a-${Date.now()}`
@@ -194,6 +208,87 @@ function AssistantPageInner() {
   function stop() {
     abortRef.current?.abort()
     setStreaming(false)
+  }
+
+  async function runSlashCommand(text: string) {
+    if (!sessionId) return
+    const userMsg: UiMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      content: text,
+    }
+    setMessages((m) => [...m, userMsg])
+    setError(null)
+
+    const parsed = parseChatCommand(text)
+    if (parsed.kind === "help" || parsed.kind === "error" || parsed.kind === "unknown") {
+      const reply: UiMessage = {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content:
+          parsed.message ??
+          "Comando desconhecido. Use /ajuda para ver os comandos.",
+      }
+      setMessages((m) => [...m, reply])
+      return
+    }
+
+    // Action: run preview, then show confirmation card.
+    try {
+      const preview = await chatApi.runAction(sessionId, parsed.payload!)
+      const reply: UiMessage = {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content: preview.message,
+        // For list_upcoming there is nothing to commit — keep it as a plain reply.
+        pendingAction:
+          preview.kind === "list_upcoming"
+            ? undefined
+            : { ...parsed.payload!, mode: "commit" },
+      }
+      setMessages((m) => [...m, reply])
+    } catch (err) {
+      const reply: UiMessage = {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content: `Falha: ${errorMessage(err)}`,
+      }
+      setMessages((m) => [...m, reply])
+    }
+  }
+
+  async function commitAction(messageId: string, payload: ChatActionPayload) {
+    if (!sessionId) return
+    // Prevent double-submit by clearing the pendingAction immediately.
+    setMessages((m) =>
+      m.map((msg) =>
+        msg.id === messageId ? { ...msg, pendingAction: undefined } : msg,
+      ),
+    )
+    try {
+      const res: ChatActionResult = await chatApi.runAction(sessionId, payload)
+      const reply: UiMessage = {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content: res.message,
+      }
+      setMessages((m) => [...m, reply])
+    } catch (err) {
+      const reply: UiMessage = {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content: `Falha ao confirmar: ${errorMessage(err)}`,
+      }
+      setMessages((m) => [...m, reply])
+    }
+  }
+
+  function dismissPending(messageId: string) {
+    setMessages((m) =>
+      m.map((msg) =>
+        msg.id === messageId ? { ...msg, pendingAction: undefined } : msg,
+      ),
+    )
   }
 
   return (
@@ -287,8 +382,17 @@ function AssistantPageInner() {
               <CardContent className="flex-1 flex flex-col gap-3 min-h-0">
                 <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 pr-2">
                   {messages.length === 0 && selected ? (
-                    <div className="text-sm text-muted-foreground">
-                      Faça uma pergunta sobre a anamnese, alergias, medicações ou tratamentos do paciente.
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <div>
+                        Faça uma pergunta sobre a anamnese, alergias, medicações ou tratamentos do paciente.
+                      </div>
+                      <div>
+                        Para gerenciar agendamentos use comandos como{" "}
+                        <code className="text-xs">/listar</code>,{" "}
+                        <code className="text-xs">/criar</code>,{" "}
+                        <code className="text-xs">/cancelar</code>. Digite{" "}
+                        <code className="text-xs">/ajuda</code> para ver todos.
+                      </div>
                     </div>
                   ) : null}
                   {messages.map((m) => (
@@ -352,6 +456,23 @@ function AssistantPageInner() {
                           </div>
                         </TooltipProvider>
                       ) : null}
+                      {m.role === "assistant" && m.pendingAction ? (
+                        <div className="mt-2 flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => commitAction(m.id, m.pendingAction!)}
+                          >
+                            Confirmar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => dismissPending(m.id)}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      ) : null}
                       {m.role === "assistant" && m.sources && m.sources.length > 0 ? (
                         <details className="mt-2 text-xs opacity-80">
                           <summary className="cursor-pointer">Fontes ({m.sources.length})</summary>
@@ -380,7 +501,11 @@ function AssistantPageInner() {
 
                 <div className="flex items-center gap-2">
                   <Input
-                    placeholder={selected ? "Pergunte algo..." : "Selecione um paciente"}
+                    placeholder={
+                      selected
+                        ? "Pergunte algo ou use /ajuda"
+                        : "Selecione um paciente"
+                    }
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {

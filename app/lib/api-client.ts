@@ -390,6 +390,7 @@ export const anamnesesApi = {
 
 // ----- Appointments -----
 export type AppointmentStatus =
+  | "requested"
   | "scheduled"
   | "confirmed"
   | "completed"
@@ -442,6 +443,23 @@ export const appointmentsApi = {
       withClinic: false,
     })
   },
+  get(id: string) {
+    return request<AppointmentRecord>(`/appointments/${id}`)
+  },
+  listForPatient(
+    patientId: string,
+    params?: { upcoming?: boolean; limit?: number; from?: string; to?: string },
+  ) {
+    const q = new URLSearchParams()
+    if (params?.upcoming) q.set("upcoming", "true")
+    if (params?.limit) q.set("limit", String(params.limit))
+    if (params?.from) q.set("from", params.from)
+    if (params?.to) q.set("to", params.to)
+    const suffix = q.toString() ? `?${q.toString()}` : ""
+    return request<AppointmentRecord[]>(
+      `/patients/${patientId}/appointments${suffix}`,
+    )
+  },
   create(payload: CreateAppointmentPayload) {
     return request<AppointmentRecord>("/appointments", {
       method: "POST",
@@ -453,6 +471,78 @@ export const appointmentsApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     })
+  },
+  cancel(id: string, reason?: string) {
+    return request<AppointmentRecord>(`/appointments/${id}`, {
+      method: "DELETE",
+      body: JSON.stringify({ reason }),
+    })
+  },
+  approve(id: string) {
+    return request<AppointmentRecord>(`/appointments/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    })
+  },
+  reject(id: string, reason?: string) {
+    return request<AppointmentRecord>(`/appointments/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    })
+  },
+}
+
+// ----- Booking tokens (patient self-booking) -----
+export interface BookingTokenIssued {
+  id: string
+  token: string
+  url: string
+  expiresAt: string
+}
+
+export interface BookingPublicPayload {
+  clinic: { id: string; name: string }
+  patient: { id: string; fullName: string }
+  dentists: { id: string; fullName: string; cro?: string | null }[]
+  busySlots: { dentistId: string; startsAt: string; endsAt: string }[]
+  expiresAt: string
+}
+
+export interface BookingSubmitPayload {
+  dentistId: string
+  startsAt: string
+  durationMinutes: number
+  reason?: string
+}
+
+export const bookingApi = {
+  createToken(
+    clinicId: string,
+    patientId: string,
+    payload?: { ttlMinutes?: number },
+  ) {
+    return request<BookingTokenIssued>(
+      `/clinics/${clinicId}/patients/${patientId}/booking-tokens`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload ?? {}),
+      },
+    )
+  },
+  getPublic(token: string) {
+    return request<BookingPublicPayload>(`/public/booking/${token}`, {
+      withClinic: false,
+    })
+  },
+  submit(token: string, payload: BookingSubmitPayload) {
+    return request<{ ok: boolean; appointment: AppointmentRecord }>(
+      `/public/booking/${token}`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+        withClinic: false,
+      },
+    )
   },
 }
 
@@ -553,6 +643,46 @@ export const chatApi = {
   listMessages(sessionId: string) {
     return request<ChatMessage[]>(`/chat/sessions/${sessionId}/messages`)
   },
+  runAction(sessionId: string, payload: ChatActionPayload) {
+    return request<ChatActionResult>(
+      `/chat/sessions/${sessionId}/actions`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    )
+  },
+}
+
+export type ChatActionKind =
+  | "list_upcoming"
+  | "create"
+  | "reschedule"
+  | "cancel"
+  | "approve"
+  | "reject"
+
+export interface ChatActionArgs {
+  appointmentId?: string
+  dentistId?: string
+  startsAt?: string
+  durationMinutes?: number
+  reason?: string
+  limit?: number
+}
+
+export interface ChatActionPayload {
+  kind: ChatActionKind
+  mode: "preview" | "commit"
+  args?: ChatActionArgs
+}
+
+export interface ChatActionResult {
+  ok: true
+  kind: ChatActionKind
+  mode: "preview" | "commit"
+  message: string
+  data?: unknown
 }
 
 export interface SourceRef {

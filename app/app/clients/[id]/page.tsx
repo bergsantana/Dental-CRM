@@ -3,12 +3,27 @@
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { AppSidebar } from "@/components/app-sidebar"
+import {
+  AppointmentDialog,
+  statusLabel,
+  statusVariant,
+} from "@/components/appointment-dialog"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import {
   ArrowLeft,
@@ -25,15 +40,23 @@ import {
   Clock,
   Eye,
   Pencil,
+  Copy,
+  Link2,
 } from "lucide-react"
 import { AuthGate } from "@/lib/auth-gate"
+import { useActiveClinic } from "@/lib/use-active-clinic"
 import {
   patientsApi,
   documentsApi,
+  clinicsApi,
+  bookingApi,
   type PatientSummary,
   type TimelineEntry,
   type PatientDocument,
   type IngestStatus,
+  type DentistSummary,
+  type AppointmentRecord,
+  type AppointmentStatus,
 } from "@/lib/api-client"
 import { errorMessage } from "@/lib/errors"
 
@@ -67,24 +90,34 @@ function ClientDetailInner() {
   const router = useRouter()
   const { toast } = useToast()
   const id = params.id
+  const { clinic } = useActiveClinic()
 
   const [patient, setPatient] = useState<PatientSummary | null>(null)
   const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [documents, setDocuments] = useState<PatientDocument[]>([])
+  const [dentists, setDentists] = useState<DentistSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editingAppt, setEditingAppt] = useState<AppointmentRecord | null>(null)
+  const [bookingOpen, setBookingOpen] = useState(false)
+  const [bookingUrl, setBookingUrl] = useState<string | null>(null)
+  const [generatingToken, setGeneratingToken] = useState(false)
+
   async function loadAll() {
     try {
-      const [p, tl, docs] = await Promise.all([
+      const [p, tl, docs, ds] = await Promise.all([
         patientsApi.get(id),
         patientsApi.timeline(id).catch(() => [] as TimelineEntry[]),
         documentsApi.list(id).catch(() => [] as PatientDocument[]),
+        clinicsApi.listDentists().catch(() => [] as DentistSummary[]),
       ])
       setPatient(p)
       setTimeline(tl)
       setDocuments(docs)
+      setDentists(ds)
     } catch (err) {
       toast({
         title: "Falha ao carregar paciente",
@@ -144,6 +177,54 @@ function ClientDetailInner() {
       toast({
         title: "Falha ao remover",
         description: errorMessage(err),
+        variant: "destructive",
+      })
+    }
+  }
+
+  function upsertAppointmentInTimeline(saved: AppointmentRecord) {
+    setTimeline((prev) => {
+      const idx = prev.findIndex(
+        (e) => e.type === "appointment" && e.data.id === saved.id,
+      )
+      const entry: TimelineEntry = {
+        type: "appointment",
+        at: saved.startsAt,
+        data: saved,
+      }
+      if (idx === -1) return [entry, ...prev]
+      const copy = prev.slice()
+      copy[idx] = entry
+      return copy
+    })
+  }
+
+  async function handleGenerateBookingLink() {
+    if (!clinic) return
+    setGeneratingToken(true)
+    try {
+      const issued = await bookingApi.createToken(clinic.id, id)
+      setBookingUrl(issued.url)
+    } catch (err) {
+      toast({
+        title: "Falha ao gerar link",
+        description: errorMessage(err),
+        variant: "destructive",
+      })
+    } finally {
+      setGeneratingToken(false)
+    }
+  }
+
+  async function copyBookingUrl() {
+    if (!bookingUrl) return
+    try {
+      await navigator.clipboard.writeText(bookingUrl)
+      toast({ title: "Link copiado" })
+    } catch {
+      toast({
+        title: "Não foi possível copiar",
+        description: "Copie manualmente abaixo.",
         variant: "destructive",
       })
     }
@@ -396,6 +477,22 @@ function ClientDetailInner() {
               </TabsContent>
 
               <TabsContent value="appointments" className="space-y-4">
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setBookingUrl(null)
+                      setBookingOpen(true)
+                    }}
+                  >
+                    <Link2 className="w-4 h-4 mr-2" />
+                    Gerar link de agendamento
+                  </Button>
+                  <Button onClick={() => setCreateOpen(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Novo agendamento
+                  </Button>
+                </div>
                 {appointments.length === 0 ? (
                   <Card>
                     <CardContent className="py-8 text-center text-muted-foreground">
@@ -406,20 +503,35 @@ function ClientDetailInner() {
                   <div className="space-y-3">
                     {appointments.map((entry) => {
                       if (entry.type !== "appointment") return null
+                      const appt = entry.data
                       return (
-                        <Card key={entry.data.id}>
+                        <Card
+                          key={appt.id}
+                          className="cursor-pointer transition-colors hover:bg-muted/40"
+                          onClick={() => setEditingAppt(appt)}
+                        >
                           <CardHeader>
-                            <CardTitle className="text-base">
-                              {new Date(entry.data.startsAt).toLocaleString()}
-                            </CardTitle>
+                            <div className="flex items-center justify-between">
+                              <CardTitle className="text-base">
+                                {new Date(appt.startsAt).toLocaleString()}
+                              </CardTitle>
+                              <Badge
+                                variant={statusVariant(
+                                  appt.status as AppointmentStatus,
+                                )}
+                              >
+                                {statusLabel(
+                                  appt.status as AppointmentStatus,
+                                )}
+                              </Badge>
+                            </div>
                             <CardDescription>
-                              Status: {entry.data.status}
-                              {entry.data.reason ? ` · ${entry.data.reason}` : ""}
+                              {appt.reason ? appt.reason : ""}
                             </CardDescription>
                           </CardHeader>
-                          {entry.data.notes ? (
+                          {appt.notes ? (
                             <CardContent>
-                              <p className="text-sm">{entry.data.notes}</p>
+                              <p className="text-sm">{appt.notes}</p>
                             </CardContent>
                           ) : null}
                         </Card>
@@ -432,6 +544,76 @@ function ClientDetailInner() {
           </div>
         </main>
       </div>
+
+      <AppointmentDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        mode="create"
+        patients={patient ? [patient] : []}
+        dentists={dentists}
+        lockPatientId={id}
+        onSaved={(a) => upsertAppointmentInTimeline(a)}
+      />
+
+      <AppointmentDialog
+        open={!!editingAppt}
+        onOpenChange={(o) => !o && setEditingAppt(null)}
+        mode="edit"
+        appointment={editingAppt}
+        patients={patient ? [patient] : []}
+        dentists={dentists}
+        onSaved={(a) => upsertAppointmentInTimeline(a)}
+        onCancelled={(a) => upsertAppointmentInTimeline(a)}
+      />
+
+      <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Link de agendamento do paciente</DialogTitle>
+            <DialogDescription>
+              Gere um link único para o paciente solicitar um horário. A
+              solicitação ficará pendente para confirmação da clínica.
+            </DialogDescription>
+          </DialogHeader>
+          {bookingUrl ? (
+            <div className="space-y-2">
+              <Label>URL</Label>
+              <div className="flex gap-2">
+                <Input value={bookingUrl} readOnly />
+                <Button type="button" variant="outline" onClick={copyBookingUrl}>
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Válido por 7 dias. Pode ser usado uma única vez.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Clique em &quot;Gerar link&quot; para criar uma URL única.
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBookingOpen(false)}
+            >
+              Fechar
+            </Button>
+            <Button
+              onClick={handleGenerateBookingLink}
+              disabled={generatingToken || !clinic}
+            >
+              {generatingToken ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Link2 className="w-4 h-4 mr-2" />
+              )}
+              {bookingUrl ? "Gerar outro" : "Gerar link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   )
 }

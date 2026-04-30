@@ -20,7 +20,7 @@ class UpdateAppointmentDto extends (0, mapped_types_1.PartialType)(create_appoin
 exports.UpdateAppointmentDto = UpdateAppointmentDto;
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsIn)(['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show']),
+    (0, class_validator_1.IsIn)(['requested', 'scheduled', 'confirmed', 'completed', 'cancelled', 'no_show']),
     __metadata("design:type", String)
 ], UpdateAppointmentDto.prototype, "status", void 0);
 __decorate([

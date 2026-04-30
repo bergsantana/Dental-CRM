@@ -25,7 +25,14 @@ let PatientsService = class PatientsService {
     async list(clinicId, opts) {
         const conds = [(0, drizzle_orm_1.eq)(schema_1.patients.clinicId, clinicId), (0, drizzle_orm_1.isNull)(schema_1.patients.deletedAt)];
         if (opts.search) {
-            conds.push((0, drizzle_orm_1.ilike)(schema_1.patients.fullName, `%${opts.search}%`));
+            const term = opts.search.trim();
+            const digits = term.replace(/\D+/g, '');
+            if (digits.length > 0) {
+                conds.push((0, drizzle_orm_1.sql) `(${schema_1.patients.fullName} ILIKE ${'%' + term + '%'} OR regexp_replace(coalesce(${schema_1.patients.cpf}, ''), '\\D', '', 'g') ILIKE ${'%' + digits + '%'})`);
+            }
+            else {
+                conds.push((0, drizzle_orm_1.ilike)(schema_1.patients.fullName, `%${term}%`));
+            }
         }
         if (opts.specialty) {
             conds.push((0, drizzle_orm_1.sql) `${opts.specialty} = ANY(${schema_1.patients.specialties})`);

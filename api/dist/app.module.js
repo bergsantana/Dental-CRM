@@ -12,6 +12,7 @@ const config_1 = require("@nestjs/config");
 const anamneses_module_1 = require("./anamneses/anamneses.module");
 const appointments_module_1 = require("./appointments/appointments.module");
 const auth_module_1 = require("./auth/auth.module");
+const booking_module_1 = require("./booking/booking.module");
 const chat_module_1 = require("./chat/chat.module");
 const clinics_module_1 = require("./clinics/clinics.module");
 const db_module_1 = require("./db/db.module");
@@ -32,6 +33,7 @@ exports.AppModule = AppModule = __decorate([
             patients_module_1.PatientsModule,
             anamneses_module_1.AnamnesesModule,
             appointments_module_1.AppointmentsModule,
+            booking_module_1.BookingModule,
             documents_module_1.DocumentsModule,
             chat_module_1.ChatModule,
         ],

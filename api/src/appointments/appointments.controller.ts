@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -18,6 +19,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
+import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller({ version: '1' })
@@ -52,6 +54,33 @@ export class AppointmentsController {
     });
   }
 
+  @UseGuards(ClinicContextGuard)
+  @Get('appointments/:id')
+  get(
+    @ActiveClinic() ctx: ClinicContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.appointments.getById(ctx.clinicId, id);
+  }
+
+  @UseGuards(ClinicContextGuard)
+  @Get('patients/:patientId/appointments')
+  listForPatient(
+    @ActiveClinic() ctx: ClinicContext,
+    @Param('patientId', ParseUUIDPipe) patientId: string,
+    @Query('upcoming') upcoming?: string,
+    @Query('limit') limit?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.appointments.listForPatient(ctx.clinicId, patientId, {
+      upcoming: upcoming === 'true',
+      limit: limit ? Math.max(1, Math.min(100, Number(limit))) : undefined,
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+    });
+  }
+
   @UseGuards(ClinicContextGuard, RolesGuard)
   @Roles('owner', 'dentist', 'receptionist')
   @Post('appointments')
@@ -63,7 +92,8 @@ export class AppointmentsController {
     return this.appointments.create(ctx.clinicId, user.userId, dto);
   }
 
-  @UseGuards(ClinicContextGuard)
+  @UseGuards(ClinicContextGuard, RolesGuard)
+  @Roles('owner', 'dentist', 'receptionist')
   @Patch('appointments/:id')
   update(
     @ActiveClinic() ctx: ClinicContext,
@@ -72,5 +102,40 @@ export class AppointmentsController {
     @Body() dto: UpdateAppointmentDto,
   ) {
     return this.appointments.update(ctx.clinicId, user.userId, ctx.role, id, dto);
+  }
+
+  @UseGuards(ClinicContextGuard, RolesGuard)
+  @Roles('owner', 'dentist', 'receptionist')
+  @Delete('appointments/:id')
+  cancel(
+    @ActiveClinic() ctx: ClinicContext,
+    @CurrentUser() user: { userId: string },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CancelAppointmentDto,
+  ) {
+    return this.appointments.cancel(ctx.clinicId, user.userId, ctx.role, id, dto?.reason);
+  }
+
+  @UseGuards(ClinicContextGuard, RolesGuard)
+  @Roles('owner', 'dentist', 'receptionist')
+  @Post('appointments/:id/approve')
+  approve(
+    @ActiveClinic() ctx: ClinicContext,
+    @CurrentUser() user: { userId: string },
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.appointments.approve(ctx.clinicId, user.userId, ctx.role, id);
+  }
+
+  @UseGuards(ClinicContextGuard, RolesGuard)
+  @Roles('owner', 'dentist', 'receptionist')
+  @Post('appointments/:id/reject')
+  reject(
+    @ActiveClinic() ctx: ClinicContext,
+    @CurrentUser() user: { userId: string },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CancelAppointmentDto,
+  ) {
+    return this.appointments.reject(ctx.clinicId, user.userId, ctx.role, id, dto?.reason);
   }
 }

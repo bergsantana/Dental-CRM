@@ -1,6 +1,11 @@
 "use client";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import {
+  AppointmentDialog,
+  statusLabel,
+  statusVariant,
+} from "@/components/appointment-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +22,7 @@ import {
   clinicsApi,
   patientsApi,
   type AppointmentRecord,
+  type AppointmentStatus,
   type DentistSummary,
   type PatientSummary,
 } from "@/lib/api-client";
@@ -45,6 +51,17 @@ function CalendarPageInner() {
   const [patients, setPatients] = useState<PatientSummary[]>([]);
   const [dentists, setDentists] = useState<DentistSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<AppointmentRecord | null>(null);
+
+  function upsertLocal(saved: AppointmentRecord) {
+    setAppointments((prev) => {
+      const idx = prev.findIndex((a) => a.id === saved.id);
+      if (idx === -1) return [...prev, saved];
+      const copy = prev.slice();
+      copy[idx] = saved;
+      return copy;
+    });
+  }
 
   const patientById = useMemo(() => {
     const m = new Map<string, PatientSummary>();
@@ -186,7 +203,11 @@ function CalendarPageInner() {
                           const patient = patientById.get(appt.patientId);
                           const dentist = dentistById.get(appt.dentistId);
                           return (
-                            <Card key={appt.id}>
+                            <Card
+                              key={appt.id}
+                              className="cursor-pointer transition-colors hover:bg-muted/40"
+                              onClick={() => setEditing(appt)}
+                            >
                               <CardHeader className="py-3">
                                 <div className="flex items-center justify-between">
                                   <CardTitle className="text-sm">
@@ -198,8 +219,14 @@ function CalendarPageInner() {
                                       },
                                     )}
                                   </CardTitle>
-                                  <Badge variant="secondary">
-                                    {appt.status}
+                                  <Badge
+                                    variant={statusVariant(
+                                      appt.status as AppointmentStatus,
+                                    )}
+                                  >
+                                    {statusLabel(
+                                      appt.status as AppointmentStatus,
+                                    )}
                                   </Badge>
                                 </div>
                                 <CardDescription className="flex items-center gap-2 flex-wrap">
@@ -226,6 +253,17 @@ function CalendarPageInner() {
           </div>
         </main>
       </div>
+
+      <AppointmentDialog
+        open={!!editing}
+        onOpenChange={(o) => !o && setEditing(null)}
+        mode="edit"
+        appointment={editing}
+        patients={patients}
+        dentists={dentists}
+        onSaved={(a) => upsertLocal(a)}
+        onCancelled={(a) => upsertLocal(a)}
+      />
     </SidebarProvider>
   );
 }

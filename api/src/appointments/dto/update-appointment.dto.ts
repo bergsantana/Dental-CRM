@@ -3,6 +3,7 @@ import { PartialType } from '@nestjs/mapped-types';
 import { CreateAppointmentDto } from './create-appointment.dto';
 
 export type AppointmentStatus =
+  | 'requested'
   | 'scheduled'
   | 'confirmed'
   | 'completed'
@@ -11,7 +12,7 @@ export type AppointmentStatus =
 
 export class UpdateAppointmentDto extends PartialType(CreateAppointmentDto) {
   @IsOptional()
-  @IsIn(['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show'])
+  @IsIn(['requested', 'scheduled', 'confirmed', 'completed', 'cancelled', 'no_show'])
   status?: AppointmentStatus;
 
   @IsOptional()

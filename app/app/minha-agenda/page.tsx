@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
+import {
+  AppointmentDialog,
+  statusLabel,
+  statusVariant,
+} from "@/components/appointment-dialog"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,8 +15,11 @@ import { Calendar as CalIcon, Clock, Loader2, User } from "lucide-react"
 import { AuthGate } from "@/lib/auth-gate"
 import {
   appointmentsApi,
+  clinicsApi,
   patientsApi,
   type AppointmentRecord,
+  type AppointmentStatus,
+  type DentistSummary,
   type PatientSummary,
 } from "@/lib/api-client"
 import { errorMessage } from "@/lib/errors"
@@ -20,18 +28,22 @@ function MinhaAgendaInner() {
   const { toast } = useToast()
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
   const [patients, setPatients] = useState<PatientSummary[]>([])
+  const [dentists, setDentists] = useState<DentistSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<AppointmentRecord | null>(null)
 
   useEffect(() => {
     let alive = true
     Promise.all([
       appointmentsApi.listMine(),
       patientsApi.list().catch(() => [] as PatientSummary[]),
+      clinicsApi.listDentists().catch(() => [] as DentistSummary[]),
     ])
-      .then(([appts, ps]) => {
+      .then(([appts, ps, ds]) => {
         if (!alive) return
         setAppointments(appts)
         setPatients(ps)
+        setDentists(ds)
       })
       .catch((err) => {
         if (!alive) return
@@ -65,6 +77,16 @@ function MinhaAgendaInner() {
     [appointments],
   )
 
+  function upsertLocal(saved: AppointmentRecord) {
+    setAppointments((prev) => {
+      const idx = prev.findIndex((a) => a.id === saved.id)
+      if (idx === -1) return [...prev, saved]
+      const copy = prev.slice()
+      copy[idx] = saved
+      return copy
+    })
+  }
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
@@ -95,7 +117,11 @@ function MinhaAgendaInner() {
                 const startsAt = new Date(appt.startsAt)
                 const patient = patientById.get(appt.patientId)
                 return (
-                  <Card key={appt.id}>
+                  <Card
+                    key={appt.id}
+                    className="cursor-pointer transition-colors hover:bg-muted/40"
+                    onClick={() => setEditing(appt)}
+                  >
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-base flex items-center gap-2">
@@ -107,7 +133,13 @@ function MinhaAgendaInner() {
                             minute: "2-digit",
                           })}
                         </CardTitle>
-                        <Badge variant="secondary">{appt.status}</Badge>
+                        <Badge
+                          variant={statusVariant(
+                            appt.status as AppointmentStatus,
+                          )}
+                        >
+                          {statusLabel(appt.status as AppointmentStatus)}
+                        </Badge>
                       </div>
                       <CardDescription className="flex items-center gap-2 flex-wrap">
                         <User className="w-3 h-3" />
@@ -127,6 +159,17 @@ function MinhaAgendaInner() {
           </div>
         </main>
       </div>
+
+      <AppointmentDialog
+        open={!!editing}
+        onOpenChange={(o) => !o && setEditing(null)}
+        mode="edit"
+        appointment={editing}
+        patients={patients}
+        dentists={dentists}
+        onSaved={(a) => upsertLocal(a)}
+        onCancelled={(a) => upsertLocal(a)}
+      />
     </SidebarProvider>
   )
 }

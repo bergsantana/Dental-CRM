@@ -15,6 +15,13 @@
       "when": 1777393638325,
       "tag": "0001_chat_metrics",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777566600000,
+      "tag": "0002_patient_booking",
+      "breakpoints": true
     }
   ]
 }

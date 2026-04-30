@@ -18,6 +18,7 @@ Dental-CRM é uma aplicação web de gestão clínica e de pacientes integrada a
   - [Modelo de dados](#modelo-de-dados)
 - [Stack tecnológico](#stack-tecnológico)
 - [Funcionalidades](#funcionalidades)
+- [Gerenciando agendamentos pelo chat](#gerenciando-agendamentos-pelo-chat)
 - [Instalação e execução](#instalação-e-execução)
   - [Pré-requisitos](#pré-requisitos)
   - [Bootstrap com um comando](#bootstrap-com-um-comando)
@@ -140,11 +141,12 @@ Tabelas principais (Postgres 16, gerenciadas pelo Drizzle ORM):
 | `clinics` | Clínicas cadastradas (soft-delete) |
 | `clinic_members` | Membership + roles (`owner`, `dentist`, `assistant`, `receptionist`) |
 | `patients` | Cadastro de pacientes por clínica (soft-delete, CPF único por clínica) |
-| `appointments` | Agendamentos com status (`scheduled`, `confirmed`, `completed`, `cancelled`, `no_show`) |
+| `appointments` | Agendamentos com status (`requested`, `scheduled`, `confirmed`, `completed`, `cancelled`, `no_show`) |
 | `anamneses` | Ficha anamnésica estruturada (alergias, medicações, histórico, consentimento) |
 | `patient_documents` | Documentos enviados com status de ingestão RAG (`pending`, `processing`, `ready`, `failed`) |
 | `chat_sessions` | Sessões de chat por paciente / usuário / clínica |
 | `chat_messages` | Mensagens com fontes, tokens e métricas RAG-Triad por mensagem |
+| `booking_tokens` | Tokens single-use (sha256) para auto-agendamento de pacientes via link público |
 
 ---
 
@@ -194,13 +196,88 @@ Tabelas principais (Postgres 16, gerenciadas pelo Drizzle ORM):
 
 - **Multi-tenant por clínica.** Um usuário pode possuir clínicas e ser membro de clínicas de outros. Roles por clínica (`owner`, `dentist`, `assistant`, `receptionist`) são independentes.
 - **Gestão de clínicas** — `/companies`. Troca de contexto entre clínicas.
-- **Agenda** — `/calendar`, `/minha-agenda`, `/agendamentos`. Agendamento em nome de qualquer dentista da clínica.
+- **Agenda** — `/calendar`, `/minha-agenda`, `/agendamentos`. Agendamento em nome de qualquer dentista da clínica. Solicitações pendentes (status `requested`) aparecem no topo de `/agendamentos` com ações **Confirmar** / **Recusar**.
+- **Auto-agendamento de paciente** — Em `/clients/[id]`, na aba **Consultas**, gere um link single-use (válido por 7 dias). O paciente acessa `/book/<token>` (público), escolhe dentista, data e duração, e cria uma solicitação em status `requested` que a recepção aprova ou recusa.
 - **Cadastro de pacientes** com perfil, anamnese, odontograma e planejamento de tratamento — `/clients`, `/clients/[id]/...`.
 - **Upload de documentos + ingestão automática.** PDFs, TXT, JSON e HTML anexados a um paciente são armazenados em `api/data/documents/patients/<id>/` e indexados no RAG em background.
 - **Anamnese auto-ingerida.** Salvar ou editar uma anamnese grava um snapshot JSON e re-indexa, garantindo que o assistente sempre veja as respostas mais recentes.
-- **Assistente por paciente** — `/assistant`. Respostas streamadas via SSE com citações de fontes, escopo estritamente por paciente.
+- **Assistente por paciente** — `/assistant`. Respostas streamadas via SSE com citações de fontes, escopo estritamente por paciente. Comandos para gerenciar agendamentos diretamente no chat: `/listar`, `/criar`, `/remarcar`, `/cancelar`, `/confirmar`, `/recusar`, `/ajuda`. Cada ação passa por um passo de confirmação (preview → Confirmar) e é registrada no histórico da conversa.
 - **Métricas RAG-Triad** persistidas por mensagem (`context_relevance`, `groundedness`, `answer_relevance`).
 - **Financeiro** — `/financeiro` (em desenvolvimento).
+
+---
+
+## Gerenciando agendamentos pelo chat
+
+A página `/assistant` aceita **comandos com barra (`/`)** que executam ações no módulo de agendamentos sem sair da conversa. O fluxo é sempre **preview → confirmar**: o chat primeiro mostra um resumo da ação proposta, e a operação só é gravada no banco quando você clica em **Confirmar**.
+
+> **Escopo.** Os comandos atuam exclusivamente sobre o paciente da sessão de chat ativa (selecionado no painel lateral). Não é possível operar em agendamentos de outro paciente pelo chat — o backend rejeita.
+
+### Como usar
+
+1. Abra `/assistant` e selecione um paciente.
+2. Digite um comando começando com `/` no campo de mensagem (ex.: `/listar`).
+3. O assistente responde com o **preview** da ação.
+4. Para ações que alteram dados (criar / remarcar / cancelar / confirmar / recusar), clique em **Confirmar** ou **Cancelar** nos botões inline.
+5. Após confirmar, o chat acrescenta uma mensagem do assistente registrando o resultado e gravando `metadata.action` no histórico.
+
+Mensagens que **não** começam com `/` continuam usando o RAG SSE normal (perguntas livres sobre anamnese, alergias, medicações, etc.).
+
+### Referência de comandos
+
+| Comando | Argumentos | Descrição |
+|---|---|---|
+| `/ajuda` | — | Lista todos os comandos disponíveis. Aliases: `/help`. |
+| `/listar` | `[limite=N]` ou `[N]` (1–50, padrão 5) | Mostra os próximos agendamentos do paciente. **Não exige confirmação.** |
+| `/criar` | `dentista=<uuid>` `data=<YYYY-MM-DD HH:mm>` `duracao=<min>` `[motivo="..."]` | Cria uma nova solicitação (status `requested`). Aliases: `/agendar`. |
+| `/remarcar` | `<appointmentId>` `data=<YYYY-MM-DD HH:mm>` `[duracao=<min>]` | Move o horário de um agendamento existente (não-terminal). |
+| `/cancelar` | `<appointmentId>` `[motivo="..."]` | Cancela um agendamento (soft-cancel). |
+| `/confirmar` | `<appointmentId>` | Aprova uma solicitação pendente (`requested` → `confirmed`). Aliases: `/aprovar`. |
+| `/recusar` | `<appointmentId>` `[motivo="..."]` | Recusa uma solicitação pendente. Aliases: `/rejeitar`. |
+
+**Convenções de argumentos**
+
+- `key=value` para todos os parâmetros nomeados.
+- Valores com espaço precisam de aspas: `motivo="paciente desistiu"`, `data="2026-05-02 14:00"`.
+- `appointmentId` e `dentista` aceitam UUIDs v4 (formato com hífens).
+- `data` aceita `YYYY-MM-DD HH:mm` (interpretado no fuso do navegador) **ou** ISO-8601 (`2026-05-02T17:00:00Z`).
+- `duracao` é em minutos, inteiro entre 5 e 480.
+
+### Exemplos
+
+```text
+/listar
+/listar limite=10
+
+/criar dentista=33333333-3333-4333-8333-333333333333 data="2026-05-02 14:00" duracao=30 motivo="limpeza"
+
+/remarcar 44444444-4444-4444-8444-444444444444 data="2026-05-02 15:30" duracao=45
+
+/cancelar 22222222-2222-4222-8222-222222222222 motivo="paciente desistiu"
+
+/confirmar 11111111-1111-4111-8111-111111111111
+/recusar   55555555-5555-4555-8555-555555555555 motivo="dentista indisponível"
+```
+
+### Como obter os UUIDs
+
+- **`appointmentId`**: rode `/listar` — cada linha do preview inclui o ID. Alternativamente, copie da página `/agendamentos` (clicando em uma linha, o ID aparece na URL/dialog).
+- **`dentista`**: na página `/calendar` ou `/minha-agenda`, ou via `GET /clinics/:id/dentists` na API.
+
+### Erros comuns
+
+| Mensagem | Causa | Como resolver |
+|---|---|---|
+| `Comando desconhecido: /xyz` | Comando não existe | Use `/ajuda` para ver a lista. |
+| `dentista deve ser um UUID válido.` | UUID malformado | Confira o formato `xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx`. |
+| `Falta data=<YYYY-MM-DD HH:mm>.` | Argumento ausente | Inclua o argumento; lembre das aspas se houver espaço. |
+| `Horário indisponível` (409) | Conflito de overlap com outro agendamento do mesmo dentista | Escolha outro horário e rode o `/criar` ou `/remarcar` novamente. |
+| `Este agendamento já está cancelado.` | Operação em registro terminal | Não há ação a fazer; o registro está finalizado. |
+| `Falha ao confirmar: ...` | Erro no commit (BE retornou erro) | A mensagem inline mostra o motivo (validação, permissão ou conflito). |
+
+### Endpoint subjacente
+
+Os comandos do chat chamam `POST /chat/sessions/:id/actions` com `{ kind, mode: "preview" | "commit", args }`. Esse endpoint é **separado** do streaming SSE (`POST /chat/sessions/:id/messages`) — assim a digitação livre continua respondendo via Ollama enquanto as ações de agendamento são síncronas e transacionais.
 
 ---
 
