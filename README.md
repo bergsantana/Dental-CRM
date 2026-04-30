@@ -1,108 +1,108 @@
 # Dental-CRM
 
-> Intelligent CRM for dental clinics with a per-patient RAG-powered assistant.
+> CRM inteligente para clínicas odontológicas com assistente RAG por paciente.
 
-Dental-CRM is a clinic and patient management web app integrated with a private **Retrieval-Augmented Generation (RAG)** service. The CRM handles clinics, dentists, patients, scheduling, anamnesis, odontogram and treatment planning. The RAG service runs locally (Ollama + ChromaDB) and exposes a small REST API that the NestJS backend proxies, allowing the assistant to answer questions grounded exclusively on a **single patient's** records.
+Dental-CRM é uma aplicação web de gestão clínica e de pacientes integrada a um serviço privado de **Geração Aumentada por Recuperação (RAG)**. O CRM gerencia clínicas, dentistas, pacientes, agendamentos, anamneses, odontograma e planejamentos de tratamento. O serviço RAG executa localmente (Ollama + ChromaDB) e expõe uma pequena API REST que o backend NestJS proxia, permitindo ao assistente responder perguntas fundamentadas exclusivamente nos registros de **um único paciente**.
 
-> **Academic project** — Oficina 2 / UEA.
+> **Projeto acadêmico** — Oficina 2 / UEA.
 
 ---
 
-## Table of Contents
+## Índice
 
-- [Overview](#overview)
-- [Repository layout](#repository-layout)
-- [Architecture](#architecture)
-  - [Component diagram](#component-diagram)
-  - [RAG pipeline in detail](#rag-pipeline-in-detail)
-  - [Data model](#data-model)
-- [Tech stack](#tech-stack)
-- [Features](#features)
-- [Installation & running](#installation--running)
-  - [Prerequisites](#prerequisites)
-  - [One-shot bootstrap](#one-shot-bootstrap)
+- [Visão geral](#visão-geral)
+- [Layout do repositório](#layout-do-repositório)
+- [Arquitetura](#arquitetura)
+  - [Diagrama de componentes](#diagrama-de-componentes)
+  - [Pipeline RAG detalhado](#pipeline-rag-detalhado)
+  - [Modelo de dados](#modelo-de-dados)
+- [Stack tecnológico](#stack-tecnológico)
+- [Funcionalidades](#funcionalidades)
+- [Instalação e execução](#instalação-e-execução)
+  - [Pré-requisitos](#pré-requisitos)
+  - [Bootstrap com um comando](#bootstrap-com-um-comando)
   - [Frontend (Next.js)](#frontend-nextjs)
-  - [Ingest the sample patient](#ingest-the-sample-patient)
-  - [Useful commands](#useful-commands)
-  - [Environment variables](#environment-variables)
-  - [Troubleshooting](#troubleshooting)
-- [RAG service REST API](#rag-service-rest-api)
-- [Technical decisions](#technical-decisions)
-- [Known limitations](#known-limitations)
-- [License](#license)
+  - [Ingestão do paciente de exemplo](#ingestão-do-paciente-de-exemplo)
+  - [Comandos úteis](#comandos-úteis)
+  - [Variáveis de ambiente](#variáveis-de-ambiente)
+  - [Solução de problemas](#solução-de-problemas)
+- [API REST do serviço RAG](#api-rest-do-serviço-rag)
+- [Decisões técnicas](#decisões-técnicas)
+- [Limitações conhecidas](#limitações-conhecidas)
+- [Licença](#licença)
 
 ---
 
-## Overview
+## Visão geral
 
-| Aspect | Detail |
+| Aspecto | Detalhe |
 |---|---|
-| Type | Micro SaaS / Academic project |
-| Domain | Dentistry — clinic management, patient records, and clinical assistant |
-| Tenancy model | Multi-tenant (per clinic), with data isolation enforced at both the database and vector store layers |
-| Execution | Fully local — no paid external API calls. LLMs served via Ollama |
+| Tipo | Micro SaaS / Projeto acadêmico |
+| Domínio | Odontologia — gestão de clínicas, pacientes e assistente clínico |
+| Modelo de tenancy | Multi-tenant (por clínica), com isolamento de dados garantido na camada de banco e no vetor store |
+| Execução | Totalmente local — sem chamadas a APIs externas pagas. LLMs via Ollama |
 
 ---
 
-## Repository layout
+## Layout do repositório
 
 ```
 Dental-CRM/
-├── app/              # Next.js 15 / React 19 / TypeScript / Tailwind v4 frontend
-├── api/              # NestJS 11 / Drizzle / Postgres backend — trust boundary
-├── rag-pipeline/     # Fastify service — ingestion, embeddings, ChromaDB, LLM chat
+├── app/              # Frontend Next.js 15 / React 19 / TypeScript / Tailwind v4
+├── api/              # Backend NestJS 11 / Drizzle / Postgres — trust boundary
+├── rag-pipeline/     # Serviço Fastify — ingestão, embeddings, ChromaDB, chat LLM
 ├── scripts/
-│   └── start.sh      # Idempotent full-stack bootstrap
+│   └── start.sh      # Bootstrap idempotente do stack completo
 ├── docker-compose.yml
 └── docker-compose.override.yml
 ```
 
-| Path | Description |
+| Caminho | Descrição |
 |---|---|
-| [`app/`](app) | CRM UI: dashboard, clients, calendar, odontogram, anamnesis, treatment planning, financials, companies, assistant. |
-| [`api/`](api) | JWT auth, clinic membership, patients, appointments, anamneses, documents, chat, RAG proxy. |
-| [`rag-pipeline/`](rag-pipeline) | Document ingestion, embeddings (`nomic-embed-text`), ChromaDB, LLaMA / phi3 chat, RAG-Triad metrics. |
+| [`app/`](app) | Interface CRM: dashboard, clientes, agenda, odontograma, anamnese, planejamento, financeiro, empresas, assistente. |
+| [`api/`](api) | Auth JWT, membros de clínica, pacientes, agendamentos, anamneses, documentos, chat, proxy RAG. |
+| [`rag-pipeline/`](rag-pipeline) | Ingestão de documentos, embeddings (`nomic-embed-text`), ChromaDB, chat LLaMA / phi3, métricas RAG-Triad. |
 
 ---
 
-## Architecture
+## Arquitetura
 
-### Component diagram
-
-```
-┌──────────────────────┐  HTTP   ┌──────────────────────┐  HTTP / SSE  ┌───────────────────────┐
-│  Next.js app (app/)  │ ──────▶ │  NestJS API (api/)   │ ───────────▶ │  RAG service          │
-│  • CRM UI            │         │  • auth / clinics    │              │  Fastify  :3000       │
-│  • Patient chat UI   │ ◀────── │  • patients / docs   │ ◀─────────── │  (rag-pipeline/)      │
-└──────────────────────┘  JWT    │  • chat proxy        │  tokens +    └───────┬───────────────┘
-                                 └──────────┬───────────┘  sources             │ embed / chat
-                                            │                                  ▼
-                                            ▼                         ┌────────────────────┐
-                                    ┌──────────────┐                  │  Ollama  :11434    │
-                                    │ Postgres :5432│                  │  phi3:mini         │
-                                    └──────────────┘                  │  nomic-embed-text  │
-                                                                      └────────────────────┘
-                                                                               ▲
-                                                                               │ upsert / query
-                                                                      ┌────────┴───────────┐
-                                                                      │  ChromaDB  :8000   │
-                                                                      └────────────────────┘
-```
-
-> The frontend **never** talks to the RAG service directly. Per-patient isolation is enforced server-side via a Chroma metadata filter on `patientId`.
-
-### RAG pipeline in detail
+### Diagrama de componentes
 
 ```
-Document (PDF / TXT / JSON / HTML)
+┌──────────────────────┐  HTTP   ┌──────────────────────┐  HTTP / SSE  ┌────────────────────────┐
+│  Next.js app (app/)  │ ──────▶ │  NestJS API (api/)   │ ───────────▶ │  RAG service           │
+│  • UI do CRM         │         │  • auth / clínicas   │              │  Fastify  :3000        │
+│  • Chat por paciente │ ◀────── │  • pacientes / docs  │ ◀─────────── │  (rag-pipeline/)       │
+└──────────────────────┘  JWT    │  • proxy do chat RAG │  tokens +    └────────┬───────────────┘
+                                 └──────────┬───────────┘  sources              │ embed / chat
+                                            │                                   ▼
+                                            ▼                          ┌────────────────────┐
+                                    ┌──────────────┐                   │  Ollama  :11434    │
+                                    │ Postgres :5432│                   │  phi3:mini         │
+                                    └──────────────┘                   │  nomic-embed-text  │
+                                                                       └────────────────────┘
+                                                                                ▲
+                                                                                │ upsert / query
+                                                                       ┌────────┴───────────┐
+                                                                       │  ChromaDB  :8000   │
+                                                                       └────────────────────┘
+```
+
+> O frontend **nunca** se comunica diretamente com o serviço RAG. O isolamento por paciente é aplicado no servidor via filtro de metadados `patientId` no ChromaDB.
+
+### Pipeline RAG detalhado
+
+```
+Documento (PDF/TXT/JSON/HTML)
         │
         ▼
   [Loader]  pdf-parse | cheerio | fs
         │
         ▼
   [Chunker]  RecursiveCharacterTextSplitter
-             • Prose:  500 chars / 75 overlap (~15%)
-             • JSON:   1 chunk per record (atomic)
+             • Prosa:  500 chars / 75 overlap (~15%)
+             • JSON:   1 chunk por registro (atomico)
         │
         ▼
   [Embeddings]  nomic-embed-text via Ollama /api/embeddings
@@ -111,131 +111,131 @@ Document (PDF / TXT / JSON / HTML)
   [Vector Store]  ChromaDB — cosine distance
                   metadata: { patientId, source, chunkIndex }
         │
-   user question
+   pergunta do usuário
         │
         ▼
-  [Retrieval]  top-k semantic search (k=8 default)
+  [Retrieval]  top-k semântico (k=8 padrão)
         │
-        ▼ (optional)
+        ▼ (opcional)
   [Re-ranker]  Xenova/bge-reranker-base (cross-encoder)
-               keeps top-3 chunks
+               mantém top-3 chunks
         │
         ▼
-  [Generation]  phi3:mini via Ollama /api/chat — streamed SSE
+  [Geração]  phi3:mini via Ollama /api/chat — streamed SSE
         │
         ▼
-  [RAG-Triad Evaluation]  (post-generation, non-blocking)
+  [Avaliação RAG-Triad]  (pós-geração, não-bloqueante)
        • Context Relevance  — cosine(question_emb, chunk_embs)
-       • Groundedness       — cosine per answer sentence vs chunks
+       • Groundedness       — cosine por sentença da resposta vs chunks
        • Answer Relevance   — cosine(question_emb, answer_emb)
 ```
 
-### Data model
+### Modelo de dados
 
-Core tables (Postgres 16, managed by Drizzle ORM):
+Tabelas principais (Postgres 16, gerenciadas pelo Drizzle ORM):
 
-| Table | Description |
+| Tabela | Descrição |
 |---|---|
-| `users` | System users (dentists, assistants, receptionists) |
-| `clinics` | Registered clinics (soft-delete) |
+| `users` | Usuários do sistema (dentistas, assistentes, recepcionistas) |
+| `clinics` | Clínicas cadastradas (soft-delete) |
 | `clinic_members` | Membership + roles (`owner`, `dentist`, `assistant`, `receptionist`) |
-| `patients` | Patient registry per clinic (soft-delete, CPF unique per clinic) |
-| `appointments` | Appointments with status (`scheduled`, `confirmed`, `completed`, `cancelled`, `no_show`) |
-| `anamneses` | Structured anamnesis form (allergies, medications, history, consent) |
-| `patient_documents` | Uploaded files with RAG ingest status (`pending`, `processing`, `ready`, `failed`) |
-| `chat_sessions` | Chat sessions scoped per patient / user / clinic |
-| `chat_messages` | Messages with sources, token counts, and per-message RAG-Triad metrics |
+| `patients` | Cadastro de pacientes por clínica (soft-delete, CPF único por clínica) |
+| `appointments` | Agendamentos com status (`scheduled`, `confirmed`, `completed`, `cancelled`, `no_show`) |
+| `anamneses` | Ficha anamnésica estruturada (alergias, medicações, histórico, consentimento) |
+| `patient_documents` | Documentos enviados com status de ingestão RAG (`pending`, `processing`, `ready`, `failed`) |
+| `chat_sessions` | Sessões de chat por paciente / usuário / clínica |
+| `chat_messages` | Mensagens com fontes, tokens e métricas RAG-Triad por mensagem |
 
 ---
 
-## Tech stack
+## Stack tecnológico
 
 ### Frontend (`app/`)
 
-| Technology | Version | Use |
+| Tecnologia | Versão | Uso |
 |---|---|---|
 | Next.js | 15 | App Router, RSC, SSE consumer |
 | React | 19 | UI |
-| TypeScript | 5 | Static typing |
-| Tailwind CSS | v4 | Styling |
-| shadcn-ui / Radix | latest | Accessible component primitives |
-| react-hook-form + zod | latest | Forms and validation |
-| lucide-react | latest | Icons |
-| sonner | latest | Toast notifications |
+| TypeScript | 5 | Tipagem estática |
+| Tailwind CSS | v4 | Estilização |
+| shadcn-ui / Radix | latest | Componentes acessíveis |
+| react-hook-form + zod | latest | Formulários e validação |
+| lucide-react | latest | Ícones |
+| sonner | latest | Notificações toast |
 
 ### API (`api/`)
 
-| Technology | Version | Use |
+| Tecnologia | Versão | Uso |
 |---|---|---|
-| NestJS | 11 | HTTP framework / module system |
-| Drizzle ORM | latest | Type-safe queries + migrations |
-| Postgres | 16 | Primary relational database |
-| JWT (Passport) | — | Stateless authentication |
-| class-validator | latest | DTO validation |
+| NestJS | 11 | Framework HTTP / módulos |
+| Drizzle ORM | latest | Queries type-safe + migrações |
+| Postgres | 16 | Banco relacional principal |
+| JWT (Passport) | — | Autenticação stateless |
+| class-validator | latest | Validação de DTOs |
 
 ### RAG Pipeline (`rag-pipeline/`)
 
-| Technology | Version | Use |
+| Tecnologia | Versão | Uso |
 |---|---|---|
-| Fastify | 4 | RAG service HTTP server |
-| ChromaDB (client) | latest | Vector store with metadata filtering |
-| Ollama | host | Local LLM server |
-| phi3:mini | ~2.3 GB | Generation model (LLM) |
-| nomic-embed-text | ~270 MB | Embedding model |
+| Fastify | 4 | HTTP server do serviço RAG |
+| ChromaDB (client) | latest | Vetor store com filtro de metadados |
+| Ollama | host | Servidor de LLMs locais |
+| phi3:mini | ~2.3 GB | Modelo de geração (LLM) |
+| nomic-embed-text | ~270 MB | Modelo de embeddings |
 | langchain text splitters | latest | `RecursiveCharacterTextSplitter` |
-| @xenova/transformers | latest | Cross-encoder reranker (optional) |
-| pdf-parse | latest | PDF text extraction |
-| cheerio | latest | HTML parser |
-| zod | latest | API payload validation |
+| @xenova/transformers | latest | Cross-encoder reranker (opcional) |
+| pdf-parse | latest | Extração de texto de PDFs |
+| cheerio | latest | Parser HTML |
+| zod | latest | Validação de payloads da API |
 
 ---
 
-## Features
+## Funcionalidades
 
-- **Multi-tenant clinic membership.** A user can own clinics and simultaneously be a member of clinics owned by others. Per-clinic roles (`owner`, `dentist`, `assistant`, `receptionist`) are independent.
-- **Multi-clinic management UI** — `/companies`. Switch between clinics.
-- **Scheduling on behalf of any dentist in the clinic** — `/calendar`, `/minha-agenda`, `/agendamentos`.
-- **Patient registry** with profile, anamnesis, odontogram and treatment planning — `/clients`, `/clients/[id]/...`.
-- **Document upload + auto-ingest.** PDF / TXT / JSON / HTML files attached to a patient are stored under `api/data/documents/patients/<id>/` and pushed into the RAG index in the background.
-- **Anamnesis auto-ingest.** Saving or editing an anamnesis writes a JSON snapshot alongside the patient documents and re-indexes it, so the assistant always sees the latest answers.
-- **Per-patient assistant** — `/assistant`. Streamed answers via SSE with source citations, scoped strictly to the selected patient.
-- **RAG-Triad metrics** persisted per message (`context_relevance`, `groundedness`, `answer_relevance`).
-- **Financial tracking** — `/financeiro` (in progress).
+- **Multi-tenant por clínica.** Um usuário pode possuir clínicas e ser membro de clínicas de outros. Roles por clínica (`owner`, `dentist`, `assistant`, `receptionist`) são independentes.
+- **Gestão de clínicas** — `/companies`. Troca de contexto entre clínicas.
+- **Agenda** — `/calendar`, `/minha-agenda`, `/agendamentos`. Agendamento em nome de qualquer dentista da clínica.
+- **Cadastro de pacientes** com perfil, anamnese, odontograma e planejamento de tratamento — `/clients`, `/clients/[id]/...`.
+- **Upload de documentos + ingestão automática.** PDFs, TXT, JSON e HTML anexados a um paciente são armazenados em `api/data/documents/patients/<id>/` e indexados no RAG em background.
+- **Anamnese auto-ingerida.** Salvar ou editar uma anamnese grava um snapshot JSON e re-indexa, garantindo que o assistente sempre veja as respostas mais recentes.
+- **Assistente por paciente** — `/assistant`. Respostas streamadas via SSE com citações de fontes, escopo estritamente por paciente.
+- **Métricas RAG-Triad** persistidas por mensagem (`context_relevance`, `groundedness`, `answer_relevance`).
+- **Financeiro** — `/financeiro` (em desenvolvimento).
 
 ---
 
-## Installation & running
+## Instalação e execução
 
-### Prerequisites
+### Pré-requisitos
 
-| Requirement | Notes |
+| Requisito | Notas |
 |---|---|
-| Docker + Docker Compose | The full backend stack runs via compose |
-| [Ollama](https://ollama.com/) | Installed **on the host** (not in Docker by default). The bootstrap script ensures it listens on `0.0.0.0:11434`. |
-| Node.js ≥ 20 + pnpm | Required only for the Next.js frontend (runs outside compose) |
+| Docker + Docker Compose | Stack completo roda via compose |
+| [Ollama](https://ollama.com/) | Instalado **no host** (não no Docker por padrão). O script de bootstrap garante que ele escute em `0.0.0.0:11434`. |
+| Node.js ≥ 20 + pnpm | Necessário apenas para o frontend Next.js (roda fora do compose) |
 
-> **GPU (optional):** Edit `docker-compose.yml` and uncomment the `deploy.resources` block under the `ollama` service. Requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+> **GPU (opcional):** Edite `docker-compose.yml` e descomente o bloco `deploy.resources` sob o serviço `ollama`. Requer o [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
-### One-shot bootstrap
+### Bootstrap com um comando
 
 ```bash
 ./scripts/start.sh
 ```
 
-The script is **idempotent** and:
+O script é **idempotente** e executa:
 
-1. Verifies tooling (`docker`, `ollama`, `curl`).
-2. Restarts Ollama on `0.0.0.0:11434` if it's bound to loopback.
-3. Pulls `phi3:mini` (~2.3 GB) and `nomic-embed-text` (~270 MB) if missing.
-4. Seeds `api/.env` and `rag-pipeline/.env` from `*.env.example` on first run.
-5. Builds images and starts the stack.
-6. Waits for Postgres / API / RAG health checks and prints all URLs.
+1. Verifica dependências (`docker`, `ollama`, `curl`).
+2. Reinicia o Ollama em `0.0.0.0:11434` se estiver vinculado ao loopback.
+3. Faz pull de `phi3:mini` (~2.3 GB) e `nomic-embed-text` (~270 MB) se ausentes.
+4. Cria `api/.env` e `rag-pipeline/.env` a partir dos arquivos `*.env.example` na primeira execução.
+5. Builda as imagens e sobe o stack.
+6. Aguarda Postgres / API / RAG ficarem saudáveis e exibe todas as URLs.
 
-Database migrations run automatically on `api` container start.
+As migrações do banco de dados são aplicadas automaticamente na inicialização do container `api`.
 
 ### Frontend (Next.js)
 
-The Next.js app runs **on the host**, outside compose:
+O app Next.js roda **no host**, fora do compose:
 
 ```bash
 cd app
@@ -243,77 +243,77 @@ pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3567](http://localhost:3567). Sign up to create your first clinic, then add patients, documents and anamneses — uploads and anamneses are auto-ingested into the patient's RAG index, so the **Assistant** page can immediately answer questions about that patient.
+Acesse [http://localhost:3567](http://localhost:3567). Faça cadastro para criar sua primeira clínica, depois adicione pacientes, documentos e anamneses — uploads e anamneses são auto-ingeridos no índice RAG do paciente, então a página **Assistente** pode imediatamente responder perguntas sobre ele.
 
-### Ingest the sample patient
+### Ingestão do paciente de exemplo
 
 ```bash
 docker compose run --rm rag pnpm ingest --dir data/sample/patient-001 --patient 001
 ```
 
-### Useful commands
+### Comandos úteis
 
-| Command | Purpose |
+| Comando | Finalidade |
 |---|---|
-| `./scripts/start.sh` | Bootstrap or refresh the stack |
-| `docker compose logs -f api rag` | Tail API and RAG logs |
-| `docker compose down` | Stop the stack |
-| `docker compose down -v` | Stop and **drop volumes** (resets DB and Chroma) |
-| `docker exec dental-crm-api-1 pnpm db:migrate` | Manually apply pending migrations |
-| `cd api && pnpm db:generate` | Generate a new Drizzle migration from schema changes |
+| `./scripts/start.sh` | Bootstrap ou refresh do stack |
+| `docker compose logs -f api rag` | Acompanhar logs da API e do RAG |
+| `docker compose down` | Parar o stack |
+| `docker compose down -v` | Parar e **apagar volumes** (reseta DB e ChromaDB) |
+| `docker exec dental-crm-api-1 pnpm db:migrate` | Aplicar migrações pendentes manualmente |
+| `cd api && pnpm db:generate` | Gerar nova migração Drizzle a partir de mudanças no schema |
 
-### Environment variables
+### Variáveis de ambiente
 
-#### `api/.env` (generated from `api/.env.example`)
+#### `api/.env` (gerado a partir de `api/.env.example`)
 
-| Variable | Default | Description |
+| Variável | Padrão | Descrição |
 |---|---|---|
-| `PORT` | `4000` | NestJS API port |
-| `APP_ORIGIN` | `http://localhost:3567` | Frontend origin (CORS) |
-| `DATABASE_URL` | `postgres://dental:dental@localhost:5432/dental_crm` | Postgres connection URL |
-| `JWT_SECRET` | `change-me-in-prod` | JWT signing secret |
-| `JWT_EXPIRES_IN` | `7d` | Token expiry |
-| `RAG_URL` | `http://localhost:3000` | Internal RAG service URL |
-| `RAG_AUTH_TOKEN` | `change-me-in-prod` | Shared token between API and RAG |
-| `DOCUMENTS_DIR` | `./data/documents` | Patient documents storage directory |
+| `PORT` | `4000` | Porta da API NestJS |
+| `APP_ORIGIN` | `http://localhost:3567` | Origem do frontend (CORS) |
+| `DATABASE_URL` | `postgres://dental:dental@localhost:5432/dental_crm` | URL de conexão com o Postgres |
+| `JWT_SECRET` | `change-me-in-prod` | Segredo para assinar tokens JWT |
+| `JWT_EXPIRES_IN` | `7d` | Expiração dos tokens |
+| `RAG_URL` | `http://localhost:3000` | URL interna do serviço RAG |
+| `RAG_AUTH_TOKEN` | `change-me-in-prod` | Token compartilhado API ↔ RAG |
+| `DOCUMENTS_DIR` | `./data/documents` | Diretório de documentos dos pacientes |
 
-#### `rag-pipeline/.env` (generated from `rag-pipeline/.env.example`)
+#### `rag-pipeline/.env` (gerado a partir de `rag-pipeline/.env.example`)
 
-| Variable | Default | Description |
+| Variável | Padrão | Descrição |
 |---|---|---|
-| `OLLAMA_URL` | `http://ollama:11434` | Ollama server URL |
-| `CHROMA_URL` | `http://chroma:8000` | ChromaDB server URL |
-| `LLM_MODEL` | `phi3:mini` | Generation model |
-| `EMBED_MODEL` | `nomic-embed-text` | Embedding model |
-| `PORT` | `3000` | RAG service port |
-| `TOP_K` | `8` | Number of chunks retrieved per query |
-| `RERANK` | `false` | Enable cross-encoder reranker |
-| `RAG_AUTH_TOKEN` | `changeme` | Must match the value in `api/.env` |
+| `OLLAMA_URL` | `http://ollama:11434` | URL do servidor Ollama |
+| `CHROMA_URL` | `http://chroma:8000` | URL do servidor ChromaDB |
+| `LLM_MODEL` | `phi3:mini` | Modelo de geração |
+| `EMBED_MODEL` | `nomic-embed-text` | Modelo de embeddings |
+| `PORT` | `3000` | Porta do serviço RAG |
+| `TOP_K` | `8` | Número de chunks recuperados por consulta |
+| `RERANK` | `false` | Ativar cross-encoder reranker |
+| `RAG_AUTH_TOKEN` | `changeme` | Deve coincidir com o valor na `api/.env` |
 
-To use a different model:
+Para usar um modelo diferente:
 ```bash
 LLM_MODEL=llama3.2:3b docker compose up -d
 ```
 
-### Troubleshooting
+### Solução de problemas
 
-| Symptom | Fix |
+| Sintoma | Solução |
 |---|---|
-| `rag` can't reach Ollama (`ECONNREFUSED 172.17.0.1:11434`) | Ollama is bound to loopback. Re-run `./scripts/start.sh` (auto-fixes) or `OLLAMA_HOST=0.0.0.0:11434 ollama serve`. |
-| `401 Unauthorized` from the RAG service | `RAG_AUTH_TOKEN` must be identical in `api/.env` and `rag-pipeline/.env`. |
-| `column "..." does not exist` | Pending migration. Run `docker exec dental-crm-api-1 pnpm db:migrate`. |
-| Port collisions | Frontend defaults to `3567`; RAG holds `3000`. Stop the conflicting process or change `PORT` in `app/.env.local`. |
-| Re-ranker slow on first use | `bge-reranker-base` (~270 MB) is downloaded on first activation and cached in the container layer. |
+| `rag` não alcança Ollama (`ECONNREFUSED 172.17.0.1:11434`) | Ollama está vinculado ao loopback. Execute `./scripts/start.sh` (corrige automaticamente) ou `OLLAMA_HOST=0.0.0.0:11434 ollama serve`. |
+| `401 Unauthorized` do serviço RAG | `RAG_AUTH_TOKEN` deve ser idêntico em `api/.env` e `rag-pipeline/.env`. |
+| `column "..." does not exist` | Migração pendente. Execute `docker exec dental-crm-api-1 pnpm db:migrate`. |
+| Colisão de portas | O frontend usa `3567`; o RAG usa `3000`. Finalize o processo conflitante ou altere `PORT` em `app/.env.local`. |
+| Re-ranker lento no primeiro uso | O modelo `bge-reranker-base` (~270 MB) é baixado na primeira ativação e cacheado na camada do container. |
 
 ---
 
-## RAG service REST API
+## API REST do serviço RAG
 
 Base URL: `http://localhost:3000`
 
 ### `GET /v1/health`
 
-Returns connection info for Ollama and ChromaDB.
+Retorna status da conexão com Ollama e ChromaDB.
 
 ```json
 { "ok": true, "ollama": "http://...", "chroma": "http://...", "model": "phi3:mini" }
@@ -321,87 +321,87 @@ Returns connection info for Ollama and ChromaDB.
 
 ### `POST /v1/ingest`
 
-Ingests patient documents into ChromaDB.
+Ingere documentos de um paciente no ChromaDB.
 
 ```json
 { "patientId": "uuid", "dir": "data/sample/patient-001" }
 ```
 
-Either `dir`, `file`, or `files[]` is required. Returns `{ "docs": N, "chunks": M }`.
+`dir` ou `file` ou `files[]` é obrigatório. Retorna `{ "docs": N, "chunks": M }`.
 
 ### `POST /v1/chat` — SSE
 
-Answers a question with Server-Sent Events streaming.
+Responde a uma pergunta com streaming Server-Sent Events.
 
 ```json
 { "patientId": "uuid", "question": "...", "k": 8, "rerank": false }
 ```
 
-Emitted events:
+Eventos emitidos:
 
-| Event | Payload | Description |
+| Evento | Payload | Descrição |
 |---|---|---|
-| `event: sources` | `[{source, index, distance}]` | Retrieved chunks |
-| `data: "<token>"` | string | LLM-generated tokens |
-| `event: metrics` | `{contextRelevance, groundedness, answerRelevance, perChunk}` | Post-generation RAG-Triad |
-| `event: done` | `{}` | Stream end |
-| `event: error` | `{message}` | Error during generation |
+| `event: sources` | `[{source, index, distance}]` | Chunks recuperados |
+| `data: "<token>"` | string | Tokens gerados pelo LLM |
+| `event: metrics` | `{contextRelevance, groundedness, answerRelevance, perChunk}` | RAG-Triad pós-geração |
+| `event: done` | `{}` | Fim do stream |
+| `event: error` | `{message}` | Erro durante geração |
 
 ---
 
-## Technical decisions
+## Decisões técnicas
 
-### Why Ollama on the host and not in Docker?
+### Por que Ollama no host e não no Docker?
 
-Ollama with GPU requires the NVIDIA driver and Container Toolkit on the host. Running it directly on the host eliminates that complexity for the academic use-case and lets you share already-downloaded models across projects. The `docker-compose.yml` keeps the `ollama` service commented out with instructions to enable it when needed.
+Ollama com GPU requer o driver NVIDIA e o Container Toolkit no host. Rodá-lo diretamente no host elimina essa complexidade para o caso de uso acadêmico e permite compartilhar modelos já baixados entre projetos. O `docker-compose.yml` mantém o serviço `ollama` comentado com instruções para ativá-lo caso necessário.
 
-### Why ChromaDB as the vector store?
+### Por que ChromaDB como vetor store?
 
-ChromaDB offers native metadata filtering (used for per-`patientId` isolation), zero extra infrastructure configuration, and an official JavaScript client. Alternatives like pgvector would require a Postgres extension and lose the separation of concerns between the relational database and the vector store.
+ChromaDB oferece filtragem de metadados nativa (usada para o isolamento por `patientId`), zero configuração de infraestrutura extra, e um cliente JavaScript oficial. Alternativas como pgvector exigiriam extensão no Postgres e perderiam a separação de preocupações entre o banco relacional e o vetor store.
 
-### Chunking strategy: 500 chars / 75 overlap
+### Estratégia de chunking: 500 chars / 75 overlap
 
-Clinical notes are short and dense. **500 characters** ≈ 1–2 short paragraphs: large enough to retain context for a single finding, small enough that top-k retrieval stays focused on the question. **75 chars (~15%) overlap** preserves sentence continuity across chunk boundaries so a fact split between two chunks is still recoverable. JSON records (anamnesis, appointments) are semantically atomic — each becomes its own chunk to avoid destroying meaning.
+Notas clínicas são curtas e densas. **500 caracteres** ≈ 1–2 parágrafos curtos: grande o suficiente para reter contexto de um achado, pequeno o suficiente para que o top-k permaneça focado na pergunta. **75 chars (~15%) de overlap** preserva continuidade entre fronteiras de chunks, tornando fatos divididos ainda recuperáveis. Registros JSON (anamnese, agendamentos) são semanticamente atômicos — cada registro vira um único chunk para não destruir o significado.
 
-### Why phi3:mini as the default LLM?
+### Por que phi3:mini como LLM padrão?
 
-`phi3:mini` (~2.3 GB) runs on modern CPUs without a dedicated GPU, delivers acceptable quality for clinical-domain queries in both Portuguese and English, and downloads quickly on the first `./scripts/start.sh`. The model is configurable via the `LLM_MODEL` environment variable for users who want `llama3.2:3b` or larger models.
+`phi3:mini` (~2.3 GB) roda em CPUs modernas sem GPU dedicada, entrega respostas de qualidade aceitável para domínio clínico em português e inglês, e puxa rápido no primeiro `./scripts/start.sh`. O modelo é configurável via variável de ambiente `LLM_MODEL` para quem quiser usar `llama3.2:3b` ou modelos maiores.
 
-### RAG-Triad evaluation without LLM-as-judge
+### Avaliação RAG-Triad sem LLM-as-judge
 
-Instead of a second LLM evaluator (expensive and slow), the system computes three metrics via embedding similarity:
-- **Context Relevance**: `cosine(question_emb, chunk_embs)` — measures whether retrieved chunks are pertinent to the question.
-- **Groundedness**: `cosine(sentence_embs, chunk_embs)` per answer sentence — measures whether each claim in the answer is supported by context.
-- **Answer Relevance**: `cosine(question_emb, answer_emb)` — measures whether the answer addresses the question.
+Em vez de um segundo LLM avaliador (caro e lento), o sistema calcula três métricas via similaridade de embeddings:
+- **Context Relevance**: `cosine(question_emb, chunk_embs)` — mede se os chunks recuperados são pertinentes.
+- **Groundedness**: `cosine(sentence_embs, chunk_embs)` por sentença da resposta — mede se a resposta é suportada pelo contexto.
+- **Answer Relevance**: `cosine(question_emb, answer_emb)` — mede se a resposta endereça a pergunta.
 
-These metrics are persisted in `chat_messages` for historical analysis.
+Essas métricas são persistidas na tabela `chat_messages` para análise histórica.
 
-### Why NestJS as API gateway instead of direct RAG access?
+### Por que NestJS como API gateway em vez de acesso direto ao RAG?
 
-NestJS acts as the security boundary: it validates the user's JWT, verifies that the patient belongs to the user's clinic, injects the `RAG_AUTH_TOKEN`, and only then forwards the request to the RAG service. The frontend never sees the RAG auth token and cannot access data from other patients.
+O NestJS atua como fronteira de segurança: valida o JWT do usuário, verifica que o paciente pertence à clínica do usuário, injeta o `RAG_AUTH_TOKEN` e só então repassa a requisição ao serviço RAG. O frontend nunca vê o token de auth do RAG nem pode acessar dados de outros pacientes.
 
-### Drizzle ORM over Prisma or TypeORM
+### Drizzle ORM em vez de Prisma ou TypeORM
 
-Drizzle ORM provides 100% TypeScript type inference without code generation, type-safe queries close to plain SQL, and versioned SQL migration files. Prisma requires a separately generated client; TypeORM's decorators conflict with NestJS 11's module system.
+Drizzle ORM oferece inferência de tipos 100% em TypeScript sem geração de código, queries type-safe próximas ao SQL puro, e migrações como arquivos SQL versionáveis. Prisma exige um cliente gerado separado; TypeORM tem decorators que conflitam com o sistema de módulos do NestJS 11.
 
 ---
 
-## Known limitations
+## Limitações conhecidas
 
-| Limitation | Detail |
+| Limitação | Detalhe |
 |---|---|
-| **No OCR support** | Only text-extractable PDFs work. Scanned PDFs (images) are silently skipped by `pdf-parse`. |
-| **Simple auth token for RAG** | `RAG_AUTH_TOKEN` is a plain bearer token with no automatic rotation. Do not expose port `3000` publicly. |
-| **No explicit multi-language handling** | The system prompt is in Portuguese. English queries work but quality may vary with `phi3:mini`. |
-| **Financials incomplete** | The `/financeiro` route is under development — only a UI scaffold exists. |
-| **Re-ranker is CPU-intensive** | `bge-reranker-base` significantly increases latency on CPU. Disable (`RERANK=false`) if latency is critical. |
-| **Synchronous ingestion** | Ingesting large directories blocks the `POST /v1/ingest` endpoint until complete. |
-| **Shared volume between API and RAG** | `api/data` is mounted in both containers. For production, replace with object storage (S3 / MinIO). |
-| **Non-revocable JWTs** | Tokens expire in 7 days. There is no blacklist — logout simply discards the token client-side. |
-| **Ollama on host networking** | The RAG container connects to Ollama via `host.docker.internal` / `0.0.0.0:11434`. On Linux this requires `--add-host=host.docker.internal:host-gateway` (already set in compose). |
+| **OCR não suportado** | Apenas PDFs com texto extraível funcionam. PDFs escaneados (imagens) são ignorados pelo `pdf-parse`. |
+| **Sem autenticação no RAG service** | O `RAG_AUTH_TOKEN` é um bearer token simples — não há rotação automática. Não expor a porta `3000` publicamente. |
+| **Sem multi-idioma explícito** | O system prompt está em português. Perguntas em inglês funcionam mas a qualidade pode variar com `phi3:mini`. |
+| **Financeiro incompleto** | A rota `/financeiro` está em desenvolvimento — apenas scaffold da UI existe. |
+| **Re-ranker intensivo** | `bge-reranker-base` aumenta latência significativamente em CPU. Desative (`RERANK=false`) se a latência for crítica. |
+| **Sem streaming de ingestão** | Ingestão de diretórios grandes é síncrona e bloqueia o endpoint `POST /v1/ingest` até concluir. |
+| **Volume compartilhado API ↔ RAG** | `api/data` é montado em ambos os containers. Em produção, substituir por object storage (S3/MinIO). |
+| **JWT não revogável** | Tokens expiram em 7 dias. Não há blacklist — logout no cliente simplesmente descarta o token localmente. |
+| **Ollama no host** | O serviço RAG se conecta ao Ollama via `host.docker.internal` / `0.0.0.0:11434`. Em Linux, isso requer `--add-host=host.docker.internal:host-gateway` (já configurado no compose). |
 
 ---
 
-## License
+## Licença
 
-Academic project — Oficina 2 / UEA. No open-source license defined.
+Projeto acadêmico — Oficina 2 / UEA.
