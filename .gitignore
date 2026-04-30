@@ -25,3 +25,5 @@ Thumbs.db
 
 # Docker volumes (local)
 **/chroma-data/
+
+ 

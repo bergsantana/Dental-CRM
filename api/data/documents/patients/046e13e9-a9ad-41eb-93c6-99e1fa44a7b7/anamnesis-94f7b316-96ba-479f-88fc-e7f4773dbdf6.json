@@ -1,0 +1,37 @@
+{
+  "kind": "anamnesis",
+  "anamnesisId": "94f7b316-96ba-479f-88fc-e7f4773dbdf6",
+  "recordedAt": "2026-04-28T05:17:21.518Z",
+  "specialties": [
+    "general",
+    "orthodontics"
+  ],
+  "chiefComplaint": null,
+  "presentIllnessHistory": null,
+  "allergiesSummary": "Minoxidil",
+  "medicationsSummary": "Penicilin",
+  "underMedicalTreatment": false,
+  "pregnant": null,
+  "gestationalWeeks": null,
+  "lactating": null,
+  "smoker": false,
+  "alcoholUse": "occasional",
+  "bruxism": false,
+  "lastDentalVisit": null,
+  "answers": {
+    "alcohol": "occasional",
+    "jawPain": "frequent",
+    "smoking": "former",
+    "diseases": "Falling hair",
+    "allergies": "Minoxidil",
+    "xrayNotes": "",
+    "biteIssues": "rotten front teeth",
+    "boneDensity": "",
+    "medications": "Penicilin",
+    "pulpVitality": "",
+    "priorImplants": "no",
+    "painSensitivity": "",
+    "rootCanalHistory": "",
+    "orthodonticHistory": "just a cleaning"
+  }
+}

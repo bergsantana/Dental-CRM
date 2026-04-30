@@ -1,0 +1,1 @@
+{"version":3,"file":"clinic-context.decorator.js","sourceRoot":"","sources":["../../../src/common/decorators/clinic-context.decorator.ts"],"names":[],"mappings":";;;AAAA,2CAAwE;AAQ3D,QAAA,YAAY,GAAG,IAAA,6BAAoB,EAC9C,CAAC,KAAc,EAAE,GAAqB,EAAiB,EAAE;IACvD,MAAM,GAAG,GAAG,GAAG,CAAC,YAAY,EAAE,CAAC,UAAU,EAAE,CAAC;IAC5C,OAAO,GAAG,CAAC,aAAa,CAAC;AAC3B,CAAC,CACF,CAAC"}
