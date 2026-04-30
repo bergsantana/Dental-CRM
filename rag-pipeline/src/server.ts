@@ -6,6 +6,7 @@ import { rerank } from "./retrieve/reranker.js";
 import { chatStream } from "./generate/ollamaChat.js";
 import { SYSTEM_PROMPT, buildUserMessage } from "./generate/prompt.js";
 import { ingest } from "./ingest/ingest.js";
+import { evaluateTriad } from "./metrics/evaluate.js";
 
 const app = Fastify({ logger: true });
 
@@ -20,25 +21,58 @@ const IngestBody = z.object({
   patientId: z.string().min(1),
   dir: z.string().optional(),
   file: z.string().optional(),
+  files: z
+    .array(
+      z.object({
+        path: z.string().min(1),
+        mime: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
-app.get("/health", async () => ({
+app.get("/v1/health", async () => ({
   ok: true,
   ollama: config.ollamaUrl,
   chroma: config.chromaUrl,
   model: config.llmModel,
 }));
 
-app.post("/ingest", async (req, reply) => {
+app.post("/v1/ingest", async (req, reply) => {
   const parsed = IngestBody.safeParse(req.body);
   if (!parsed.success) {
     return reply.code(400).send({ error: parsed.error.flatten() });
   }
-  const result = await ingest({
-    patient: parsed.data.patientId,
-    dir: parsed.data.dir,
-    file: parsed.data.file,
-  });
+
+  const payload = parsed.data;
+  let result: { docs: number; chunks: number };
+
+  if (payload.dir) {
+    result = await ingest({
+      patient: payload.patientId,
+      dir: payload.dir,
+    });
+  } else {
+    const filePaths = payload.files?.map((f) => f.path) ?? (payload.file ? [payload.file] : []);
+    if (filePaths.length === 0) {
+      return reply.code(400).send({
+        error: "Provide dir, file, or files[].path",
+      });
+    }
+
+    let docs = 0;
+    let chunks = 0;
+    for (const filePath of filePaths) {
+      const partial = await ingest({
+        patient: payload.patientId,
+        file: filePath,
+      });
+      docs += partial.docs;
+      chunks += partial.chunks;
+    }
+    result = { docs, chunks };
+  }
+
   return result;
 });
 
@@ -46,7 +80,7 @@ app.post("/ingest", async (req, reply) => {
  * POST /chat — streams the answer as Server-Sent Events.
  * Each event has `data: <token>`; a final `event: done` event closes.
  */
-app.post("/chat", async (req, reply) => {
+app.post("/v1/chat", async (req, reply) => {
   const parsed = ChatBody.safeParse(req.body);
   if (!parsed.success) {
     return reply.code(400).send({ error: parsed.error.flatten() });
@@ -76,10 +110,22 @@ app.post("/chat", async (req, reply) => {
     { role: "user" as const, content: buildUserMessage(question, hits, patientId) },
   ];
 
+  let answer = "";
   try {
     for await (const piece of chatStream(messages)) {
+      answer += piece;
       reply.raw.write(`data: ${JSON.stringify(piece)}\n\n`);
     }
+
+    // Evaluate the RAG-Triad on the completed answer. Failures here must
+    // not break the response — we still emit `done` so the client closes.
+    try {
+      const metrics = await evaluateTriad({ question, answer, hits });
+      reply.raw.write(`event: metrics\ndata: ${JSON.stringify(metrics)}\n\n`);
+    } catch (err) {
+      app.log.warn({ err }, "metrics evaluation failed");
+    }
+
     reply.raw.write("event: done\ndata: {}\n\n");
   } catch (err) {
     reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: String(err) })}\n\n`);

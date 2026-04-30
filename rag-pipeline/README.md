@@ -14,7 +14,7 @@ A minimal Retrieval-Augmented Generation service for querying patient data with
 | Vector DB | ChromaDB (server) with cosine distance, metadata filter on `patientId` |
 | Retrieval | top-k semantic search (k=8 default) |
 | Re-ranking (optional) | `Xenova/bge-reranker-base` cross-encoder via `@xenova/transformers` |
-| Generation | `llama3:8b` via Ollama `/api/chat`, streamed |
+| Generation | `phi3:mini` via Ollama `/api/chat`, streamed |
 
 ### Why these chunk sizes?
 
@@ -49,11 +49,12 @@ would destroy meaning.
 ```bash
 cd rag-pipeline
 
-# 1. Bring everything up. First run pulls llama3:8b (~4.7 GB) and
+# 1. Bring everything up. First run pulls phi3:mini (~2.3 GB) and
 #    nomic-embed-text (~270 MB) into a named volume — be patient.
 docker compose up -d
 
-#2  Init Ollama
+# 2. Watch model pulls (optional)
+docker compose logs -f ollama-bootstrap
 
 # 3. Ingest the sample patient
 docker compose run --rm rag-app pnpm ingest \
@@ -97,14 +98,14 @@ Environment variables (defaults shown in [`.env.example`](.env.example)):
 |---|---|---|
 | `OLLAMA_URL` | `http://ollama:11434` | Ollama host |
 | `CHROMA_URL` | `http://chroma:8000` | Chroma host |
-| `LLM_MODEL` | `llama3:8b` | Generation model |
+| `LLM_MODEL` | `phi3:mini` | Generation model |
 | `EMBED_MODEL` | `nomic-embed-text` | Embedding model |
 | `TOP_K` | `8` | Default `nResults` |
 | `RERANK` | `false` | Enable cross-encoder re-rank |
 
 To use a different model, set it in your shell before `docker compose up`:
 ```bash
-LLM_MODEL=llama3.1:8b docker compose up -d
+LLM_MODEL=llama3.2:3b docker compose up -d
 ```
 
 ## Verification
