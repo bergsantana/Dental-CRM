@@ -23,8 +23,8 @@ const menuItems = [
   { title: "Painel", icon: LayoutDashboard, href: "/dashboard" },
   { title: "Pacientes", icon: Users, href: "/clients" },
   { title: "Assistente", icon: Sparkles, href: "/assistant" },
+  { title: "Agendamentos", icon: Calendar, href: "/agendamentos" },
   { title: "Minha Agenda", icon: ClipboardList, href: "/minha-agenda" },
-  { title: "Agenda Geral", icon: Calendar, href: "/calendar" },
 ]
 
 export function AppSidebar() {

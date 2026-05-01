@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useRef, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import {
   appointmentsApi,
@@ -123,6 +123,7 @@ interface FormState {
   durationMinutes: number;
   reason: string;
   notes: string;
+  status?: AppointmentStatus;
 }
 
 const EMPTY_FORM: FormState = {
@@ -133,6 +134,7 @@ const EMPTY_FORM: FormState = {
   durationMinutes: 30,
   reason: "",
   notes: "",
+  status: undefined,
 };
 
 export function AppointmentDialog({
@@ -155,6 +157,12 @@ export function AppointmentDialog({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [patientSearch, setPatientSearch] = useState("");
 
+  const lastApptRef = useRef<AppointmentRecord | null>(null);
+  if (appointment) {
+    lastApptRef.current = appointment;
+  }
+  const activeAppt = appointment || lastApptRef.current;
+
   useEffect(() => {
     if (!open) return;
     if (mode === "edit" && appointment) {
@@ -175,6 +183,7 @@ export function AppointmentDialog({
         durationMinutes,
         reason: appointment.reason ?? "",
         notes: appointment.notes ?? "",
+        status: appointment.status as AppointmentStatus,
       });
     } else {
       setForm({
@@ -187,8 +196,8 @@ export function AppointmentDialog({
   }, [open, mode, appointment, lockPatientId, lockDentistId]);
 
   const isTerminal =
-    mode === "edit" && appointment
-      ? ALLOWED_TRANSITIONS[appointment.status as AppointmentStatus].length === 0
+    mode === "edit" && activeAppt
+      ? ALLOWED_TRANSITIONS[activeAppt.status as AppointmentStatus].length === 0
       : false;
 
   const handleSubmit = async (e: FormEvent) => {
@@ -218,6 +227,7 @@ export function AppointmentDialog({
           endsAt,
           reason: form.reason || undefined,
           notes: form.notes || undefined,
+          status: form.status,
         });
         toast({ title: "Agendamento atualizado" });
       } else {
@@ -236,25 +246,7 @@ export function AppointmentDialog({
     }
   };
 
-  const handleStatusChange = async (next: AppointmentStatus) => {
-    if (!appointment) return;
-    setSubmitting(true);
-    try {
-      const saved = await appointmentsApi.update(appointment.id, {
-        status: next,
-      });
-      onSaved?.(saved);
-      toast({ title: `Status alterado para ${statusLabel(next)}` });
-    } catch (err) {
-      toast({
-        title: "Falha ao alterar status",
-        description: errorMessage(err),
-        variant: "destructive",
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+
 
   const handleConfirmCancel = async () => {
     if (!appointment) return;
@@ -280,11 +272,14 @@ export function AppointmentDialog({
     }
   };
 
-  const allowedNextStatuses: AppointmentStatus[] =
-    mode === "edit" && appointment
-      ? [...ALLOWED_TRANSITIONS[appointment.status as AppointmentStatus]].filter(
-          (s) => s !== "cancelled",
-        )
+  const statusesToShow: AppointmentStatus[] =
+    mode === "edit" && activeAppt
+      ? Array.from(new Set([
+          activeAppt.status as AppointmentStatus,
+          ...ALLOWED_TRANSITIONS[activeAppt.status as AppointmentStatus].filter(
+            (s) => s !== "cancelled",
+          )
+        ]))
       : [];
 
   const patientSelectDisabled = mode === "edit" || !!lockPatientId || isTerminal;
@@ -322,7 +317,7 @@ export function AppointmentDialog({
               {mode === "create"
                 ? "Selecione paciente, dentista e horário"
                 : isTerminal
-                  ? `Status atual: ${statusLabel(appointment!.status as AppointmentStatus)} (não editável)`
+                  ? `Status atual: ${statusLabel(activeAppt!.status as AppointmentStatus)} (não editável)`
                   : "Altere horário, motivo ou status"}
             </DialogDescription>
           </DialogHeader>
@@ -439,16 +434,16 @@ export function AppointmentDialog({
               />
             </div>
 
-            {mode === "edit" && allowedNextStatuses.length > 0 && (
+            {mode === "edit" && !isTerminal && statusesToShow.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-2 border-t">
-                {allowedNextStatuses.map((s) => (
+                {statusesToShow.map((s) => (
                   <Button
                     key={s}
                     type="button"
                     size="sm"
-                    variant="outline"
+                    variant={form.status === s ? "default" : "outline"}
                     disabled={submitting}
-                    onClick={() => handleStatusChange(s)}
+                    onClick={() => setForm({ ...form, status: s })}
                   >
                     Marcar como {statusLabel(s).toLowerCase()}
                   </Button>

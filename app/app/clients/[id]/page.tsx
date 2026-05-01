@@ -100,11 +100,7 @@ function ClientDetailInner() {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [createOpen, setCreateOpen] = useState(false)
   const [editingAppt, setEditingAppt] = useState<AppointmentRecord | null>(null)
-  const [bookingOpen, setBookingOpen] = useState(false)
-  const [bookingUrl, setBookingUrl] = useState<string | null>(null)
-  const [generatingToken, setGeneratingToken] = useState(false)
 
   async function loadAll() {
     try {
@@ -199,36 +195,9 @@ function ClientDetailInner() {
     })
   }
 
-  async function handleGenerateBookingLink() {
-    if (!clinic) return
-    setGeneratingToken(true)
-    try {
-      const issued = await bookingApi.createToken(clinic.id, id)
-      setBookingUrl(issued.url)
-    } catch (err) {
-      toast({
-        title: "Falha ao gerar link",
-        description: errorMessage(err),
-        variant: "destructive",
-      })
-    } finally {
-      setGeneratingToken(false)
-    }
-  }
 
-  async function copyBookingUrl() {
-    if (!bookingUrl) return
-    try {
-      await navigator.clipboard.writeText(bookingUrl)
-      toast({ title: "Link copiado" })
-    } catch {
-      toast({
-        title: "Não foi possível copiar",
-        description: "Copie manualmente abaixo.",
-        variant: "destructive",
-      })
-    }
-  }
+
+
 
   if (loading) {
     return (
@@ -478,19 +447,9 @@ function ClientDetailInner() {
 
               <TabsContent value="appointments" className="space-y-4">
                 <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setBookingUrl(null)
-                      setBookingOpen(true)
-                    }}
-                  >
-                    <Link2 className="w-4 h-4 mr-2" />
-                    Gerar link de agendamento
-                  </Button>
-                  <Button onClick={() => setCreateOpen(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Novo agendamento
+                  <Button onClick={() => router.push(`/agendamentos/${id}`)}>
+                    <CalendarIcon className="w-4 h-4 mr-2" />
+                    Gerenciar consultas
                   </Button>
                 </div>
                 {appointments.length === 0 ? (
@@ -546,16 +505,6 @@ function ClientDetailInner() {
       </div>
 
       <AppointmentDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        mode="create"
-        patients={patient ? [patient] : []}
-        dentists={dentists}
-        lockPatientId={id}
-        onSaved={(a) => upsertAppointmentInTimeline(a)}
-      />
-
-      <AppointmentDialog
         open={!!editingAppt}
         onOpenChange={(o) => !o && setEditingAppt(null)}
         mode="edit"
@@ -566,54 +515,7 @@ function ClientDetailInner() {
         onCancelled={(a) => upsertAppointmentInTimeline(a)}
       />
 
-      <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Link de agendamento do paciente</DialogTitle>
-            <DialogDescription>
-              Gere um link único para o paciente solicitar um horário. A
-              solicitação ficará pendente para confirmação da clínica.
-            </DialogDescription>
-          </DialogHeader>
-          {bookingUrl ? (
-            <div className="space-y-2">
-              <Label>URL</Label>
-              <div className="flex gap-2">
-                <Input value={bookingUrl} readOnly />
-                <Button type="button" variant="outline" onClick={copyBookingUrl}>
-                  <Copy className="w-4 h-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Válido por 7 dias. Pode ser usado uma única vez.
-              </p>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Clique em &quot;Gerar link&quot; para criar uma URL única.
-            </p>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setBookingOpen(false)}
-            >
-              Fechar
-            </Button>
-            <Button
-              onClick={handleGenerateBookingLink}
-              disabled={generatingToken || !clinic}
-            >
-              {generatingToken ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Link2 className="w-4 h-4 mr-2" />
-              )}
-              {bookingUrl ? "Gerar outro" : "Gerar link"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
     </SidebarProvider>
   )
 }
