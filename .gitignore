@@ -1,7 +1,7 @@
 # Dependencies
 **/node_modules
-**/.pnpm-store
-
+**/.pnpm-store/
+**/package-lock.json
 # Next.js
 app/.next/
 app/out/
