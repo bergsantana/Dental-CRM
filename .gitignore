@@ -22,6 +22,7 @@ Thumbs.db
 **/*.log
 **/npm-debug.log*
 **/pnpm-debug.log*
+**/pnpm-lock.yaml
 
 # Docker volumes (local)
 **/chroma-data/
